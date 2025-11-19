@@ -1,0 +1,21 @@
+{
+  "name": "clearo",
+  "version": "1.0.0",
+  "description": "Clearo - Transparency Platform - Project transparency verification and voting",
+  "private": true,
+  "scripts": {
+    "build": "anchor build",
+    "test": "anchor test",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "keywords": [
+    "solana",
+    "blockchain",
+    "transparency",
+    "voting",
+    "verification"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+
