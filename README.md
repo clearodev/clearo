@@ -13,205 +13,110 @@
 
 ---
 
+## 📖 About
+
+Clearo is a blockchain-based transparency platform that empowers projects to build trust with their communities through verifiable ownership, comprehensive documentation, and community-driven voting. Built on Solana, Clearo leverages smart contracts to ensure immutable verification and transparent governance.
+
 ## ✨ Features
 
-- 🔐 **Project Ownership Verification** - On-chain verification using token burn (500 CLRO tokens)
-- 📄 **Transparency Profiles** - Upload whitepapers, roadmaps, audits, and other transparency documents
-- 👍👎 **Token-Gated Voting** - Community voting system (10 CLRO tokens = 1 vote)
-- 📊 **Transparency Score** - Automated scoring based on votes, documentation, updates, and on-chain activity
-- 🎖 **Project Badges** - Embeddable badges that display transparency scores
-- 🔗 **Wallet Integration** - Seamless Solana wallet connection (Phantom, Solflare, and more)
-- 📧 **Email Verification** - Secure email-based authentication and verification
-- 🛡️ **Security First** - Rate limiting, JWT authentication, and secure file uploads
+### 🔐 Project Ownership Verification
+Projects can verify their ownership on-chain by burning CLRO tokens (500 tokens required). This creates an immutable proof of ownership stored on the Solana blockchain, preventing impersonation and ensuring authenticity.
+
+### 📄 Transparency Profiles
+Projects can create comprehensive transparency profiles by uploading various documents including:
+- Whitepapers
+- Roadmaps
+- Security audits
+- Financial reports
+- Governance documents
+
+All documents are hashed and stored immutably, ensuring integrity and preventing tampering.
+
+### 👍👎 Token-Gated Voting
+Community members can vote on projects using a token-gated system where 10 CLRO tokens equal 1 vote. This ensures that votes come from invested community members and prevents spam. Tokens are burned during voting, making each vote meaningful and costly to manipulate.
+
+### 📊 Transparency Score
+An automated scoring system calculates each project's transparency score based on multiple factors:
+- **User Votes (25%)** - Community sentiment and engagement
+- **Documentation Quality (50%)** - Completeness and variety of documents
+- **Project Updates (15%)** - Recent activity and communication
+- **On-Chain Activity (10%)** - Verification status and blockchain interactions
+
+### 🎖 Project Badges
+Projects receive embeddable badges that display their transparency score. Badges are automatically updated and can be embedded on websites, GitHub repositories, or documentation pages to showcase transparency credentials.
+
+### 🔗 Wallet Integration
+Seamless integration with Solana wallets including Phantom, Solflare, and other popular wallets. Users can connect their wallets to verify projects, vote, and manage their profiles.
+
+### 📧 Email Authentication
+Traditional email-based authentication system for users who prefer not to use wallets, with secure email verification and password reset functionality.
 
 ## 🏗️ Architecture
 
-Clearo consists of three main components:
+Clearo is built as a full-stack decentralized application with three main components:
 
-1. **Solana Smart Contracts** (Anchor programs)
-   - Verification Program - Handles project ownership verification
-   - Registry Program - Stores project metadata and document hashes
-   - Voting Program - Token-gated voting system
+### 1. Solana Smart Contracts (Anchor Programs)
 
-2. **Backend API** (Node.js/Express)
-   - RESTful API for project management
-   - Document upload and storage
-   - Transparency score calculation
-   - Database management (PostgreSQL)
+**Verification Program**
+- Generates unique verification codes
+- Validates token transfers with verification codes
+- Stores verification state on-chain
 
-3. **Frontend Application** (Next.js/React)
-   - Modern, responsive UI
-   - Wallet integration
-   - Project verification flow
-   - Voting interface
-   - Badge widget
+**Registry Program**
+- Registers new projects
+- Stores project metadata
+- Manages document hashes
+- Updates verification status
+- Tracks transparency scores
+
+**Voting Program**
+- Handles token-gated voting
+- Burns tokens during voting
+- Records votes on-chain
+- Supports vote changes
+
+### 2. Backend API (Node.js/Express)
+
+The backend serves as the bridge between the blockchain and frontend, handling:
+- Document upload and storage
+- Transparency score calculation
+- Off-chain data indexing
+- User authentication (email and wallet-based)
+- API rate limiting and security
+- Database management (PostgreSQL)
+
+### 3. Frontend Application (Next.js/React)
+
+A modern, responsive web application featuring:
+- Project discovery and browsing
+- Project verification flow
+- Document upload interface
+- Voting interface
+- Badge widget for embedding
+- Wallet connection and management
+- User profiles and authentication
 
 ## 🛠️ Tech Stack
 
-### Blockchain
-- **Solana** - High-performance blockchain
-- **Anchor** - Framework for Solana programs
-- **@solana/web3.js** - Solana JavaScript SDK
+### Blockchain Layer
+- **Solana** - High-performance blockchain with fast, low-cost transactions
+- **Anchor Framework** - Development framework for Solana programs
+- **@solana/web3.js** - JavaScript SDK for Solana interactions
 
 ### Frontend
-- **Next.js 14** - React framework with App Router
-- **TypeScript** - Type-safe JavaScript
+- **Next.js 14** - React framework with App Router and server-side rendering
+- **TypeScript** - Type-safe development
 - **TailwindCSS** - Utility-first CSS framework
-- **Framer Motion** - Animation library
-- **Solana Wallet Adapter** - Wallet integration
+- **Framer Motion** - Smooth animations and transitions
+- **Solana Wallet Adapter** - Wallet integration library
 
 ### Backend
 - **Node.js** - JavaScript runtime
-- **Express** - Web framework
-- **TypeScript** - Type-safe JavaScript
-- **PostgreSQL** - Relational database
-- **JWT** - Authentication tokens
+- **Express** - Web application framework
+- **TypeScript** - Type-safe backend development
+- **PostgreSQL** - Relational database for off-chain data
+- **JWT** - Secure authentication tokens
 - **Multer** - File upload handling
-
-## 📋 Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-- **Node.js** 18+ ([Download](https://nodejs.org/))
-- **Rust** 1.70+ ([Install](https://www.rust-lang.org/tools/install))
-- **Anchor CLI** 0.29+ ([Install](https://www.anchor-lang.com/docs/installation))
-- **Solana CLI** 1.18+ ([Install](https://docs.solana.com/cli/install-solana-cli-tools))
-- **PostgreSQL** 14+ ([Download](https://www.postgresql.org/download/))
-- **Git** ([Download](https://git-scm.com/))
-
-## 🚀 Quick Start
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/yourusername/clearo.git
-cd clearo
-```
-
-### 2. Install Dependencies
-
-```bash
-# Install root dependencies
-npm install
-
-# Install backend dependencies
-cd backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
-```
-
-### 3. Set Up Environment Variables
-
-#### Backend Configuration
-
-```bash
-# Copy the example environment file
-cp env.example .env
-```
-
-Edit `.env` and configure:
-
-```env
-# Server Configuration
-NODE_ENV=development
-PORT=3001
-HOST=0.0.0.0
-
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=clearo
-DB_USER=postgres
-DB_PASSWORD=your_password_here
-
-# JWT Secret (generate a strong random string)
-JWT_SECRET=your_jwt_secret_here
-
-# Solana Configuration
-SOLANA_RPC_URL=https://api.devnet.solana.com
-
-# Frontend URL
-FRONTEND_URL=http://localhost:3002
-
-# Email Configuration (choose one)
-# Option 1: Resend API
-RESEND_API_KEY=your_resend_api_key
-RESEND_FROM=noreply@yourdomain.com
-
-# Option 2: SMTP
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your_email@gmail.com
-SMTP_PASSWORD=your_email_password
-SMTP_FROM=noreply@yourdomain.com
-```
-
-#### Frontend Configuration
-
-```bash
-# Copy the example environment file
-cp frontend/env.example frontend/.env.local
-```
-
-Edit `frontend/.env.local`:
-
-```env
-# Backend API URL
-NEXT_PUBLIC_API_URL=http://localhost:3001
-
-# Solana RPC URL
-NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
-
-# Solana Program Addresses (update after deploying programs)
-NEXT_PUBLIC_VERIFICATION_ADDRESS=your_verification_program_id
-NEXT_PUBLIC_CLRO_TOKEN_MINT=your_clro_token_mint_address
-```
-
-### 4. Set Up Database
-
-```bash
-# Create PostgreSQL database
-createdb clearo
-
-# Or using psql
-psql -U postgres
-CREATE DATABASE clearo;
-```
-
-The database tables will be created automatically on first backend startup.
-
-### 5. Build Solana Programs
-
-```bash
-# Build all Anchor programs
-anchor build
-
-# Deploy to devnet (optional)
-anchor deploy --provider.cluster devnet
-```
-
-### 6. Start Development Servers
-
-#### Terminal 1: Backend
-
-```bash
-cd backend
-npm run dev
-```
-
-Backend will run on `http://localhost:3001`
-
-#### Terminal 2: Frontend
-
-```bash
-cd frontend
-npm run dev
-```
-
-Frontend will run on `http://localhost:3002`
 
 ## 📁 Project Structure
 
@@ -223,160 +128,102 @@ clearo/
 │   └── voting/            # Voting program
 ├── backend/               # Express API server
 │   ├── src/
-│   │   ├── routes/        # API routes
-│   │   │   ├── auth.ts    # Authentication routes
-│   │   │   ├── projects.ts
-│   │   │   ├── documents.ts
-│   │   │   ├── voting.ts
-│   │   │   ├── scoring.ts
-│   │   │   └── walletAuth.ts
+│   │   ├── routes/        # API endpoints
 │   │   ├── services/      # Business logic
-│   │   │   ├── email.ts
-│   │   │   └── scoring.ts
 │   │   ├── middleware/    # Express middleware
 │   │   ├── db/            # Database setup
 │   │   └── utils/         # Utility functions
 │   └── package.json
 ├── frontend/              # Next.js application
 │   ├── app/               # Next.js app directory
-│   │   ├── page.tsx       # Landing page
-│   │   ├── projects/      # Project pages
-│   │   ├── verify/        # Verification flow
-│   │   └── badge/         # Badge widget
 │   ├── components/        # React components
 │   ├── contexts/          # React contexts
 │   └── package.json
-├── scripts/               # Utility scripts
-├── Anchor.toml            # Anchor configuration
-├── .gitignore
-├── env.example            # Backend environment template
-└── README.md
+└── scripts/               # Utility scripts
 ```
 
-## 🔌 API Endpoints
+## 🔌 API Overview
 
-### Projects
+The backend provides RESTful APIs for:
 
-- `GET /api/projects` - List all projects (with filters)
-- `GET /api/projects/:projectId` - Get project details
-- `POST /api/projects` - Create new project
-- `PUT /api/projects/:projectId` - Update project
-- `POST /api/projects/:projectId/logo` - Upload project logo
+- **Projects** - CRUD operations, filtering, search
+- **Documents** - Upload, retrieval, deletion
+- **Voting** - Vote recording and statistics
+- **Scoring** - Transparency score calculation
+- **Authentication** - Email and wallet-based auth
+- **Profiles** - User and wallet profile management
 
-### Documents
+## 📊 Transparency Scoring System
 
-- `GET /api/documents/project/:projectId` - Get project documents
-- `POST /api/documents/upload` - Upload document
-- `DELETE /api/documents/:id` - Delete document
+The transparency score is a weighted calculation that evaluates multiple aspects of a project:
 
-### Voting
+### Score Components
 
-- `GET /api/voting/project/:projectId` - Get vote statistics
-- `POST /api/voting/vote` - Record vote
-
-### Scoring
-
-- `POST /api/scoring/calculate/:projectId` - Calculate transparency score
-
-### Authentication
-
-- `POST /api/auth/signup` - Register new user
-- `POST /api/auth/login` - Login user
-- `GET /api/auth/me` - Get current user
-- `POST /api/auth/verify-email` - Verify email address
-- `POST /api/auth/forgot-password` - Request password reset
-- `POST /api/auth/reset-password` - Reset password
-
-### Wallet Authentication
-
-- `POST /api/wallet/login` - Login with wallet
-- `GET /api/wallet/profile` - Get wallet profile
-- `POST /api/wallet/profile` - Update wallet profile
-
-## 📊 Transparency Scoring
-
-The transparency score is calculated from multiple factors:
-
-- **User Votes (25%)** - Community sentiment (upvotes vs downvotes)
-- **Documentation Quality (50%)** - Document types and completeness
-- **Project Updates (15%)** - Recent activity and engagement
-- **On-Chain Activity (10%)** - Verification status and blockchain activity
+- **User Votes (25%)** - Ratio of upvotes to downvotes from the community
+- **Documentation Quality (50%)** - Presence and variety of transparency documents
+- **Project Updates (15%)** - Frequency and recency of project activity
+- **On-Chain Activity (10%)** - Verification status and blockchain interactions
 
 ### Badge Levels
 
-- 💎 **Diamond** (90-100) - Exceptional transparency
-- ⭐ **Platinum** (75-89) - High transparency
-- 🥇 **Gold** (60-74) - Good transparency
+Projects are assigned badges based on their transparency score:
+
+- 💎 **Diamond** (90-100) - Exceptional transparency and community trust
+- ⭐ **Platinum** (75-89) - High transparency standards
+- 🥇 **Gold** (60-74) - Good transparency practices
 - 🥈 **Silver** (45-59) - Moderate transparency
 - 🥉 **Bronze** (30-44) - Basic transparency
 - ⚠️ **Unverified** (<30) - Needs improvement
 
-## 🔒 Security
+## 🔒 Security Features
 
-- **Rate Limiting** - Prevents API abuse
-- **JWT Authentication** - Secure token-based auth
-- **File Upload Validation** - Type and size restrictions
-- **CORS Protection** - Configurable origin restrictions
-- **Helmet.js** - Security headers
+- **Rate Limiting** - API endpoints are protected against abuse
+- **JWT Authentication** - Secure token-based authentication
+- **File Upload Validation** - Type and size restrictions on uploads
+- **CORS Protection** - Configurable cross-origin resource sharing
+- **Helmet.js** - Security headers for HTTP protection
 - **Input Validation** - Request validation and sanitization
+- **On-Chain Verification** - Immutable proof of ownership on blockchain
 
-## 🧪 Testing
+## 🔄 How It Works
 
-```bash
-# Test Solana programs
-anchor test
+### Verification Flow
 
-# Run backend tests (if available)
-cd backend
-npm test
+1. Project owner connects their Solana wallet
+2. System generates a unique verification code
+3. Owner burns 500 CLRO tokens with the verification code in the transaction memo
+4. Backend verifies the transaction on-chain
+5. Project is marked as verified with immutable proof
 
-# Run frontend tests (if available)
-cd frontend
-npm test
-```
+### Voting Flow
 
-## 📦 Production Deployment
+1. Community member connects wallet
+2. Member selects upvote or downvote
+3. System creates transaction to burn 10 CLRO tokens per vote
+4. Vote is recorded on-chain via the voting program
+5. Backend indexes the vote and recalculates transparency score
+6. Project badge updates automatically
 
-### Using PM2
+### Document Management
 
-1. Copy `ecosystem.config.js.example` to `ecosystem.config.js`
-2. Configure environment variables in the ecosystem file
-3. Build the applications:
+1. Project owner uploads transparency documents
+2. Documents are stored securely with hash verification
+3. Document metadata is stored in the database
+4. Document hashes can be verified against blockchain records
+5. Documents contribute to transparency score calculation
 
-```bash
-# Build backend
-cd backend
-npm run build
+## 📝 Documentation
 
-# Build frontend
-cd ../frontend
-npm run build
-```
+For detailed documentation, see:
 
-4. Start with PM2:
-
-```bash
-pm2 start ecosystem.config.js
-```
-
-### Environment Variables
-
-Ensure all production environment variables are set:
-- Database credentials
-- JWT secret
-- Solana RPC URL (mainnet)
-- Email service credentials
-- Frontend URL
+- [Architecture Documentation](./ARCHITECTURE.md) - System architecture and design decisions
+- [Project Summary](./PROJECT_SUMMARY.md) - Feature overview and project status
+- [GitHub Setup Guide](./GITHUB_SETUP.md) - Setup and configuration guide
+- [Production Setup](./PRODUCTION_SETUP.md) - Production deployment guide
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Contributions are welcome! This project is open source and we encourage community participation. Please see our contributing guidelines for more information.
 
 ### Development Guidelines
 
@@ -386,47 +233,18 @@ Contributions are welcome! Please follow these steps:
 - Update documentation as needed
 - Follow the existing code style
 
-## 📝 Documentation
-
-- [Architecture Documentation](./ARCHITECTURE.md)
-- [Project Summary](./PROJECT_SUMMARY.md)
-- [GitHub Setup Guide](./GITHUB_SETUP.md)
-- [Production Setup](./PRODUCTION_SETUP.md)
-
-## 🐛 Troubleshooting
-
-### Database Connection Issues
-
-- Verify PostgreSQL is running: `pg_isready`
-- Check database credentials in `.env`
-- Ensure database exists: `psql -l`
-
-### Solana RPC Issues
-
-- Verify RPC URL is correct
-- Check API key if using private RPC
-- Try switching to public RPC for testing
-
-### Build Errors
-
-- Clear node_modules and reinstall: `rm -rf node_modules && npm install`
-- Clear Next.js cache: `rm -rf frontend/.next`
-- Clear Anchor build: `anchor clean && anchor build`
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
+Built with the following amazing technologies:
+
 - [Solana](https://solana.com/) - High-performance blockchain
 - [Anchor](https://www.anchor-lang.com/) - Solana framework
 - [Next.js](https://nextjs.org/) - React framework
 - [TailwindCSS](https://tailwindcss.com/) - CSS framework
-
-## 📧 Contact
-
-For questions or support, please open an issue on GitHub.
 
 ---
 
@@ -434,6 +252,6 @@ For questions or support, please open an issue on GitHub.
 
 **Built with ❤️ on Solana**
 
-[⭐ Star this repo](https://github.com/yourusername/clearo) | [🐛 Report Bug](https://github.com/yourusername/clearo/issues) | [💡 Request Feature](https://github.com/yourusername/clearo/issues)
+[⭐ Star this repo](https://github.com/clearodev/clearo) | [🐛 Report Bug](https://github.com/clearodev/clearo/issues) | [💡 Request Feature](https://github.com/clearodev/clearo/issues)
 
 </div>
