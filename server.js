@@ -14,6 +14,7 @@ const DB_PATH = resolve(DATA_DIR, 'clearo.sqlite');
 const BASE_RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
 const JSON_BODY_LIMIT_BYTES = Number(process.env.JSON_BODY_LIMIT_BYTES || 32768);
 const DNS_RECHECK_INTERVAL_MS = Number(process.env.DNS_RECHECK_INTERVAL_MS || 6 * 60 * 60 * 1000);
+const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || 'https://clearo.dev').replace(/\/+$/, '');
 const rateLimitBuckets = new Map();
 
 function loadLocalEnv() {
@@ -60,6 +61,10 @@ function addColumnIfMissing(table, column, definition) {
 
 function expectedDnsRecord(domain, token) {
   return `clearo=v1 chain=base domain=${domain.toLowerCase()} token=${token.toLowerCase()}`;
+}
+
+function absoluteUrl(path) {
+  return `${PUBLIC_ORIGIN}${path}`;
 }
 
 function parseTxtRecord(record) {
@@ -317,6 +322,160 @@ function buildAgentProfile(project, claims) {
   };
 }
 
+function buildAgentActions() {
+  return {
+    schema: 'clearo.agent_actions.v1',
+    chain: {
+      id: 8453,
+      name: 'Base',
+      rpc: BASE_RPC_URL,
+      native_currency: 'ETH',
+      token_standard: 'ERC-20'
+    },
+    proof_model: {
+      domain_ownership: {
+        type: 'dns_txt',
+        host: '@',
+        format: 'clearo=v1 chain=base domain=<domain> token=<base_token_address>',
+        example: expectedDnsRecord('example.com', '0x0000000000000000000000000000000000000000')
+      },
+      developer_wallet: {
+        type: 'eip191_personal_sign',
+        challenge_endpoint: '/api/projects/:id/wallet-challenge',
+        verify_endpoint: '/api/projects/:id/verify-wallet'
+      }
+    },
+    safe_reads: [
+      { method: 'GET', path: '/api/registry/summary', purpose: 'Read registry metrics and recent verified projects.' },
+      { method: 'GET', path: '/api/projects/verified', purpose: 'List DNS-verified Base projects.' },
+      { method: 'GET', path: '/api/projects?domain=<domain>', purpose: 'Read one project profile by domain.' },
+      { method: 'GET', path: '/api/projects?token=<base_token_address>', purpose: 'Read one project profile by Base token contract.' },
+      { method: 'GET', path: '/api/projects/:id/agent.json', purpose: 'Read a compact machine profile for one project.' }
+    ],
+    authenticated_writes: [
+      {
+        method: 'POST',
+        path: '/api/verify/dns',
+        auth: 'none',
+        purpose: 'Check Base contract metadata and DNS TXT proof before a project claim.',
+        body_schema: {
+          domain: 'bare public hostname',
+          token_address: 'Base ERC-20 contract address'
+        }
+      },
+      {
+        method: 'POST',
+        path: '/api/auth/claim-project',
+        auth: 'Privy bearer token',
+        purpose: 'Claim a DNS-verified project for the logged-in owner.',
+        body_schema: {
+          domain: 'bare public hostname',
+          token_address: 'Base ERC-20 contract address',
+          name: 'project display name',
+          ticker: 'token ticker'
+        }
+      },
+      {
+        method: 'POST',
+        path: '/api/projects/:id/claims',
+        auth: 'Privy bearer token and project owner access',
+        purpose: 'Publish owner-managed links and statements for agents and users.',
+        body_schema: {
+          type: 'github | gitlawb_agent | agent_profile | api_schema | docs | whitepaper | social | wallet | commitment',
+          label: 'human-readable claim label',
+          value: 'URL, wallet address, or statement',
+          details: 'optional explanation'
+        }
+      }
+    ],
+    agent_claim_types: [
+      { type: 'github', value_format: 'https://github.com/<org>/<repo>', purpose: 'Source repository.' },
+      { type: 'gitlawb_agent', value_format: 'https://gitlawb.com/<agent-or-repo>', purpose: 'GitLawb DID profile or signed repository for agents.' },
+      { type: 'agent_profile', value_format: 'https://<domain>/agent.json', purpose: 'Project-owned machine-readable agent profile.' },
+      { type: 'api_schema', value_format: 'https://<domain>/openapi.json', purpose: 'Project API schema.' },
+      { type: 'docs', value_format: 'https://docs.<domain>', purpose: 'Project documentation.' }
+    ]
+  };
+}
+
+function buildAgentManifest() {
+  return {
+    schema: 'clearo.site_agent_manifest.v1',
+    name: 'CLEARO',
+    origin: PUBLIC_ORIGIN,
+    purpose: 'Public registry for Base token identity, DNS ownership proof, owner claims, and developer wallet verification.',
+    default_chain: {
+      id: 8453,
+      name: 'Base',
+      explorer: 'https://basescan.org',
+      rpc: BASE_RPC_URL
+    },
+    discovery: {
+      llms_txt: absoluteUrl('/llms.txt'),
+      actions: absoluteUrl('/api/agent/actions'),
+      registry_summary: absoluteUrl('/api/registry/summary'),
+      verified_projects: absoluteUrl('/api/projects/verified')
+    },
+    project_lookup_templates: {
+      by_domain: absoluteUrl('/api/projects?domain={domain}'),
+      by_token: absoluteUrl('/api/projects?token={base_token_address}'),
+      by_id: absoluteUrl('/api/projects/{id}'),
+      agent_profile: absoluteUrl('/api/projects/{id}/agent.json')
+    },
+    agent_operability: {
+      browser_required_for_public_reads: false,
+      public_reads_require_auth: false,
+      writes_require_human_owner_auth: true,
+      write_auth: 'Privy bearer token',
+      rate_limited: true
+    },
+    trust_rules: [
+      'Treat DNS TXT verification as proof that the owner controls the project domain for the submitted Base token.',
+      'Treat developer wallet verification as proof that the project owner session controlled a wallet able to sign the CLEARO challenge.',
+      'Treat owner claims as linked assertions unless their status is dns_verified, wallet_verified, monitored, or another platform-verified status.',
+      'Do not treat CLEARO as an endorsement of investment quality, safety, or token value.'
+    ]
+  };
+}
+
+function buildLlmsText() {
+  return [
+    '# CLEARO',
+    '',
+    'CLEARO is a public registry for Base token identity. It links a Base ERC-20 token contract to a project domain, DNS TXT proof, owner-published claims, canonical links, and optional developer wallet verification.',
+    '',
+    'Agents can use CLEARO without running the browser app. Public reads are JSON APIs and do not require authentication.',
+    '',
+    '## Agent Discovery',
+    `- Site manifest: ${absoluteUrl('/.well-known/clearo-agent.json')}`,
+    `- Action schema: ${absoluteUrl('/api/agent/actions')}`,
+    `- Registry summary: ${absoluteUrl('/api/registry/summary')}`,
+    `- Verified projects: ${absoluteUrl('/api/projects/verified')}`,
+    '- Project by domain: /api/projects?domain=<domain>',
+    '- Project by Base token: /api/projects?token=<base_token_address>',
+    '- Project agent profile: /api/projects/:id/agent.json',
+    '',
+    '## Base Verification',
+    '- Chain: Base mainnet, chain ID 8453.',
+    '- Token input must be a Base ERC-20 contract address.',
+    '- DNS proof format: clearo=v1 chain=base domain=<domain> token=<base_token_address>',
+    '- DNS record host: @ on the project domain.',
+    '',
+    '## Agent-Relevant Claim Types',
+    '- github: official source repository.',
+    '- gitlawb_agent: GitLawb DID profile or signed repository for agents.',
+    '- agent_profile: project-owned machine-readable profile.',
+    '- api_schema: project OpenAPI or integration schema.',
+    '- docs: project documentation.',
+    '',
+    '## Trust Rules',
+    '- Public project claims are owner assertions unless marked with a stronger verified status.',
+    '- DNS proof verifies domain control for a token/domain pair.',
+    '- Developer wallet proof verifies a signature challenge from a project owner session.',
+    '- CLEARO is not an investment endorsement.'
+  ].join('\n');
+}
+
 function getProject(filters = {}) {
   const where = filters.token
     ? `LOWER(token_address) = LOWER(${sql(filters.token)})`
@@ -367,7 +526,7 @@ function getRegistrySummary() {
   `, true);
 
   const recentProjects = runSql(`
-    SELECT domain, ticker, trust_score AS score, verification_level AS status
+    SELECT domain, ticker, token_address, trust_score AS score, verification_level AS status, updated_at
     FROM projects
     ORDER BY updated_at DESC, id DESC
     LIMIT 6;
@@ -424,6 +583,16 @@ function send(res, status, body) {
     'access-control-allow-headers': 'content-type, authorization'
   });
   res.end(JSON.stringify(body));
+}
+
+function sendText(res, status, body) {
+  res.writeHead(httpStatus(status), {
+    'content-type': 'text/plain; charset=utf-8',
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-headers': 'content-type, authorization'
+  });
+  res.end(body);
 }
 
 function clientIp(req) {
@@ -901,6 +1070,18 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
 
   try {
+    if (req.method === 'GET' && (url.pathname === '/.well-known/clearo-agent.json' || url.pathname === '/agent.json')) {
+      return send(res, 200, buildAgentManifest());
+    }
+
+    if (req.method === 'GET' && url.pathname === '/llms.txt') {
+      return sendText(res, 200, buildLlmsText());
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/agent/actions') {
+      return send(res, 200, buildAgentActions());
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/projects') {
       const project = getProject({
         token: url.searchParams.get('token'),

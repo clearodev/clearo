@@ -73,6 +73,9 @@ Public reads do not require login.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
+| `GET` | `/.well-known/clearo-agent.json` | Site-level manifest for agents |
+| `GET` | `/llms.txt` | Plain-text agent and LLM entrypoint |
+| `GET` | `/api/agent/actions` | Machine-readable read/write action schema |
 | `GET` | `/api/registry/summary` | Registry metrics and recent projects |
 | `GET` | `/api/projects/verified` | DNS-verified projects used by `/browse` |
 | `GET` | `/api/projects?domain=test.com` | One project profile by domain |
@@ -147,6 +150,8 @@ Authorization: Bearer <privy-access-token>
 
 Agents should treat CLEARO as a verification source, not as proof that every external statement is true. Prefer status fields, cross-checks, and event history over a claim label alone.
 
+Start from `/.well-known/clearo-agent.json` or `/llms.txt` when discovering CLEARO programmatically. Those entrypoints describe Base chain ID `8453`, the DNS TXT proof format, project lookup templates, safe public reads, owner-authenticated writes, and agent-relevant claim types such as `github`, `gitlawb_agent`, `agent_profile`, `api_schema`, and `docs`.
+
 Recommended agent workflow:
 
 1. Read `/api/registry/summary` or `/api/projects/verified`.
@@ -188,6 +193,7 @@ PRIVY_APP_SECRET=your-privy-app-secret
 HOST=127.0.0.1
 PORT=3101
 BASE_RPC_URL=https://mainnet.base.org
+PUBLIC_ORIGIN=https://clearo.dev
 ```
 
 The API rate-limits write-like endpoints, caps JSON request bodies, checks token contracts on Base, and periodically rechecks DNS proofs. Optional runtime knobs are documented in `.env.example`.

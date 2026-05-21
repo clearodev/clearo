@@ -121,6 +121,19 @@ function shortAddress(value) {
   return value ? `${value.slice(0, 6)}...${value.slice(-4)}` : '0x...';
 }
 
+function relativeTime(value) {
+  if (!value) return 'sync pending';
+  const timestamp = new Date(String(value).replace(' ', 'T')).getTime();
+  if (!Number.isFinite(timestamp)) return 'sync pending';
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return `verified ${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `verified ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `verified ${hours}h ago`;
+  return `verified ${Math.floor(hours / 24)}d ago`;
+}
+
 function getUserWalletAddress(user) {
   const linkedWallet = (user?.linkedAccounts || user?.linked_accounts || [])
     .find((account) => account?.type === 'wallet' || account?.type === 'smart_wallet');
@@ -244,8 +257,9 @@ function Header({ navigate, auth }) {
       <a className="brand" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>CLEARO</a>
       <nav className="nav-links">
         <a href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>Registry</a>
-        <a href="/browse" onClick={(e) => { e.preventDefault(); navigate('/browse'); }}>Browse</a>
+        <a href="/browse" onClick={(e) => { e.preventDefault(); navigate('/browse'); }}>Verify</a>
         <a href="/claim" onClick={(e) => { e.preventDefault(); navigate('/claim'); }}>Claim</a>
+        <a href="/docs" onClick={(e) => { e.preventDefault(); navigate('/docs'); }}>Proofs</a>
         <a href="/docs" onClick={(e) => { e.preventDefault(); navigate('/docs'); }}>Docs</a>
         {auth.authenticated ? (
           <div className="user-session">
@@ -253,7 +267,7 @@ function Header({ navigate, auth }) {
             <button onClick={auth.logout} className="logout-btn">Logout</button>
           </div>
         ) : (
-          <button className="login-link" onClick={auth.login} disabled={!auth.ready}>Log in</button>
+          <button className="login-link" onClick={auth.login} disabled={!auth.ready}>Wallet</button>
         )}
       </nav>
     </header>
@@ -310,31 +324,58 @@ function HomePage({ navigate, auth }) {
   }, []);
 
   useDecryptOnView();
+  const latestProject = registrySummary.recent_projects[0];
+  const latestValue = latestProject?.token_address
+    ? shortAddress(latestProject.token_address)
+    : (latestProject?.status || 'awaiting verified claim');
 
   return (
     <main className="page">
       <Header navigate={navigate} auth={auth} />
       
       <section className="hero">
-        <div className="folio">CLR</div>
+        <div className="folio">
+          <span className="folio-mark">CLR</span>
+          <span className="folio-meta">base:8453</span>
+          <span className="folio-hash">proof:{formatNumber(registrySummary.metrics.dns_verified)}</span>
+        </div>
         <div className="hero-main">
-          <p className="section-label">Decentralized Token Identity</p>
+          <p className="section-label">Base Token Registry</p>
           <h1 className="decrypt-text" data-text="Verified by domain, proven by chain.">
             Verified by domain, proven by chain.
           </h1>
           <p className="lede">
-            The source of truth for Base projects. Search the registry or claim your identity via DNS.
+            Verify domain ownership, wallet proof, and Base registry state from a single public lookup.
           </p>
           
           <div className="search-box-large">
-            <Search size={20} />
+            <span className="command-prefix">&gt;</span>
             <input 
-              placeholder="Search by domain or contract..." 
+              placeholder="search domain, contract..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && navigate(`/project/${search}`)}
             />
-            <button onClick={() => navigate(`/project/${search}`)}>Search</button>
+            <span className="command-cursor" aria-hidden="true" />
+            <button onClick={() => navigate(`/project/${search}`)}>
+              <Search size={15} />
+              <span>Run lookup</span>
+            </button>
+          </div>
+
+          <div className="live-proof" aria-label="Live registry status">
+            <div className="live-proof-head">
+              <span>Live registry</span>
+              <strong>chain sync: active</strong>
+            </div>
+            <div className="live-proof-body">
+              <span>latest claim</span>
+              <strong>{latestProject ? `${latestProject.domain} -> ${latestValue}` : 'awaiting verified claim'}</strong>
+            </div>
+            <div className="live-proof-foot">
+              <span>{latestProject ? relativeTime(latestProject.updated_at) : 'verified records will appear after DNS proof'}</span>
+              <span>base mainnet</span>
+            </div>
           </div>
         </div>
       </section>
