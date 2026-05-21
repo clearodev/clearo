@@ -426,6 +426,7 @@ label span,
 
 .verify,
 .claims,
+.profile-intel,
 .api {
   border-bottom: 1px solid var(--line);
   display: grid;
@@ -459,8 +460,96 @@ label span,
 .proof-form,
 .proof-status,
 .claims-grid,
+.profile-intel-grid,
 .api-block {
   padding: 40px 24px;
+}
+
+.profile-intel-grid {
+  display: grid;
+  gap: 0;
+  grid-template-columns: 1.1fr 0.9fr 1fr;
+  padding: 0;
+}
+
+.proof-list,
+.contract-panel,
+.agent-panel {
+  padding: 40px 24px;
+}
+
+.proof-list,
+.contract-panel {
+  border-right: 1px solid var(--line);
+}
+
+.proof-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 16px 0;
+}
+
+.proof-row strong {
+  display: block;
+  font-family: "Orbitron", sans-serif;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.proof-row p,
+.canonical-links p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 6px;
+}
+
+.proof-row > span {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 8px;
+  text-transform: uppercase;
+}
+
+.proof-verified > span {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.contract-fields {
+  display: grid;
+  gap: 18px;
+}
+
+.agent-link,
+.canonical-links a {
+  align-items: center;
+  border: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 12px;
+}
+
+.agent-link {
+  color: var(--signal);
+}
+
+.canonical-links {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.canonical-links a {
+  color: var(--ink);
+  font-size: 13px;
 }
 
 .proof-form {
@@ -742,13 +831,36 @@ pre {
   align-items: end;
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(220px, 1.4fr) auto auto;
   margin-top: 24px;
 }
 
 .wallet-verify-grid .button {
   height: 42px;
   min-width: 180px;
+}
+
+.wallet-address-field {
+  display: grid;
+  gap: 8px;
+}
+
+.wallet-address-field span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wallet-address-field input {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  height: 42px;
+  padding: 0 16px;
+  width: 100%;
 }
 
 .detail-form label span {
@@ -1385,6 +1497,29 @@ pre {
   padding: 24px;
 }
 
+.footer-left {
+  align-items: center;
+  display: flex;
+  gap: 32px;
+}
+
+.footer-nav {
+  display: flex;
+  gap: 16px;
+}
+
+.footer-nav a {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  transition: color 180ms ease;
+}
+
+.footer-nav a:hover {
+  color: var(--signal);
+}
+
 .footer-brand {
   font-size: 14px;
 }
@@ -1458,9 +1593,10 @@ pre {
 
 @media (max-width: 1100px) {
   .hero,
-  .verify,
-  .claims,
-  .api,
+	  .verify,
+	  .claims,
+	  .profile-intel,
+	  .api,
   .examples-section,
   .browse-section,
   .login-section,
@@ -1468,9 +1604,10 @@ pre {
   .claim-flow-grid,
   .manage-section,
   .docs-section,
-  .proof-grid,
-  .claims-grid,
-  .detail-form {
+	  .proof-grid,
+	  .claims-grid,
+	  .profile-intel-grid,
+	  .detail-form {
     grid-template-columns: 1fr;
   }
 
@@ -1493,8 +1630,11 @@ pre {
   .proof-form,
   .proof-status,
   .project-summary,
-  .claim-list,
-  .events,
+	  .claim-list,
+	  .proof-list,
+	  .contract-panel,
+	  .agent-panel,
+	  .events,
   .browse-grid,
   .api-block {
     border-left: 0;
@@ -1508,8 +1648,11 @@ pre {
   .proof-form,
   .proof-status,
   .project-summary,
-  .claim-list,
-  .events,
+	  .claim-list,
+	  .proof-list,
+	  .contract-panel,
+	  .agent-panel,
+	  .events,
   .browse-grid,
   .api-block {
     border-top: 1px solid var(--line);
@@ -1578,8 +1721,11 @@ pre {
   .proof-form,
   .proof-status,
   .project-summary,
-  .claim-list,
-  .events,
+	  .claim-list,
+	  .proof-list,
+	  .contract-panel,
+	  .agent-panel,
+	  .events,
   .api-block {
     padding: 24px 14px;
   }

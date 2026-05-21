@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { PrivyProvider, getAccessToken, usePrivy } from '@privy-io/react-auth';
+import { PrivyProvider, getAccessToken, usePrivy, useWallets } from '@privy-io/react-auth';
 import {
   Check,
   Clock3,
@@ -12,12 +12,79 @@ import {
   WalletCards,
   ClipboardCopy,
   Github,
-  Twitter
+  Twitter,
+  ExternalLink,
+  FileJson
 } from 'lucide-react';
 import './styles.css';
 
 const privyAppId = import.meta.env.VITE_PRIVY_APP_ID;
 const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const CLAIM_OPTIONS = [
+  {
+    value: 'github',
+    label: 'GitHub',
+    defaultLabel: 'GitHub repository',
+    placeholder: 'https://github.com/org/repo',
+    detail: 'Official source repository for agents and reviewers.'
+  },
+  {
+    value: 'gitlawb_agent',
+    label: 'GitLawb agent',
+    defaultLabel: 'GitLawb agent profile',
+    placeholder: 'https://gitlawb.com/agent-id',
+    detail: 'GitLawb DID profile or signed repository for agents.'
+  },
+  {
+    value: 'agent_profile',
+    label: 'Agent profile',
+    defaultLabel: 'Agent profile',
+    placeholder: 'https://yourdomain.com/agent.json',
+    detail: 'Machine-readable project profile for agents.'
+  },
+  {
+    value: 'api_schema',
+    label: 'API schema',
+    defaultLabel: 'API schema',
+    placeholder: 'https://yourdomain.com/openapi.json',
+    detail: 'Machine-readable API schema or integration reference.'
+  },
+  {
+    value: 'docs',
+    label: 'Documentation',
+    defaultLabel: 'Documentation',
+    placeholder: 'https://docs.yourdomain.com',
+    detail: 'Primary project documentation published by the owner.'
+  },
+  {
+    value: 'whitepaper',
+    label: 'Whitepaper',
+    defaultLabel: 'Whitepaper',
+    placeholder: 'https://yourdomain.com/whitepaper.pdf',
+    detail: 'Primary project whitepaper published by the owner.'
+  },
+  {
+    value: 'social',
+    label: 'Social',
+    defaultLabel: 'Official social account',
+    placeholder: 'https://x.com/project',
+    detail: 'Official social profile published by the owner.'
+  },
+  {
+    value: 'wallet',
+    label: 'Wallet',
+    defaultLabel: 'Project wallet',
+    placeholder: '0x...',
+    detail: 'Project-controlled wallet or treasury address.'
+  },
+  {
+    value: 'commitment',
+    label: 'Commitment',
+    defaultLabel: 'Project commitment',
+    placeholder: 'https://yourdomain.com/commitments',
+    detail: 'Public commitment or policy published by the owner.'
+  }
+];
 
 function mapApiProject(data) {
   return {
@@ -35,6 +102,14 @@ function mapApiProject(data) {
     walletStatus: data.wallet_status,
     devWalletAddress: data.dev_wallet_address,
     devWalletVerifiedAt: data.dev_wallet_verified_at,
+    contract: data.contract || {
+      status: data.contract_status || 'missing',
+      symbol: data.contract_symbol,
+      decimals: data.contract_decimals
+    },
+    proofs: data.proofs || [],
+    canonicalLinks: data.canonical_links || [],
+    agentProfileUrl: data.agent_profile_url,
     summary: data.summary || `${data.domain} claims ${data.ticker} on ${data.chain}.`,
     claims: data.claims || [],
     events: (data.events || []).map((event) => event.message || event),
@@ -50,6 +125,17 @@ function getUserWalletAddress(user) {
   const linkedWallet = (user?.linkedAccounts || user?.linked_accounts || [])
     .find((account) => account?.type === 'wallet' || account?.type === 'smart_wallet');
   return user?.wallet?.address || linkedWallet?.address || linkedWallet?.wallet_address || '';
+}
+
+function normalizeAddress(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function formatDateTime(value) {
+  if (!value) return 'Not checked';
+  return new Date(String(value).replace(' ', 'T')).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
 }
 
 function App() {
@@ -77,7 +163,7 @@ function App() {
 }
 
 function AppShell() {
-  const { ready, authenticated, user, login, logout } = usePrivy();
+  const { ready, authenticated, user, login, logout, connectWallet } = usePrivy();
   const [path, setPath] = useState(window.location.pathname);
   const [account, setAccount] = useState({ user: null, projects: [] });
   const [accountLoading, setAccountLoading] = useState(true);
@@ -124,7 +210,7 @@ function AppShell() {
     refreshAccount();
   }, [ready, authenticated, user?.id]);
 
-  const auth = { ready, authenticated, user, login, logout, account, accountLoading, refreshAccount };
+  const auth = { ready, authenticated, user, login, logout, connectWallet, account, accountLoading, refreshAccount };
 
   let currentPage;
   // Simple routing
@@ -132,6 +218,8 @@ function AppShell() {
   else if (path === '/profile') currentPage = <AccountPage navigate={navigate} auth={auth} />;
   else if (path === '/claim') currentPage = <ClaimPage navigate={navigate} auth={auth} />;
   else if (path === '/browse') currentPage = <BrowsePage navigate={navigate} auth={auth} />;
+  else if (path === '/privacy') currentPage = <PrivacyPage navigate={navigate} auth={auth} />;
+  else if (path === '/terms') currentPage = <TermsPage navigate={navigate} auth={auth} />;
   else {
   const projectMatch = path.match(/^\/project\/(.+)$/);
     currentPage = projectMatch
@@ -142,14 +230,15 @@ function AppShell() {
   return (
     <>
       {currentPage}
-      <SiteFooter />
+      <SiteFooter navigate={navigate} />
     </>
   );
 }
 
 function Header({ navigate, auth }) {
   const primaryProject = auth.account.projects[0];
-  const userLabel = primaryProject?.domain || auth.user?.email?.address || auth.user?.wallet?.address || 'Logged-in account';
+  const walletAddr = getUserWalletAddress(auth.user);
+  const userLabel = primaryProject?.domain || (walletAddr ? shortAddress(walletAddr) : (auth.user?.email?.address || 'Logged-in account'));
   return (
     <header className="topbar">
       <a className="brand" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>CLEARO</a>
@@ -171,10 +260,16 @@ function Header({ navigate, auth }) {
   );
 }
 
-function SiteFooter() {
+function SiteFooter({ navigate }) {
   return (
     <footer className="site-footer">
-      <a className="brand footer-brand" href="/">CLEARO</a>
+      <div className="footer-left">
+        <a className="brand footer-brand" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>CLEARO</a>
+        <nav className="footer-nav" aria-label="Legal">
+          <a href="/privacy" onClick={(e) => { e.preventDefault(); navigate('/privacy'); }}>Privacy</a>
+          <a href="/terms" onClick={(e) => { e.preventDefault(); navigate('/terms'); }}>Terms</a>
+        </nav>
+      </div>
       <div className="footer-links" aria-label="CLEARO external links">
         <a className="social-link" href="https://github.com/clearodev/clearo" target="_blank" rel="noreferrer" aria-label="CLEARO GitHub repository">
           <Github size={15} />
@@ -312,6 +407,8 @@ function HomePage({ navigate, auth }) {
 
 function AccountPage({ navigate, auth }) {
   const projects = auth.account.projects || [];
+  const walletAddr = getUserWalletAddress(auth.user);
+  const identity = walletAddr ? shortAddress(walletAddr) : (auth.user?.email?.address || auth.user?.twitter?.username || 'Privy Session');
 
   if (auth.accountLoading) {
     return (
@@ -361,7 +458,7 @@ function AccountPage({ navigate, auth }) {
           </div>
           <div className="record-row">
             <span>Session</span>
-            <strong>Privy</strong>
+            <strong>{identity}</strong>
           </div>
           <div className="record-row">
             <span>Access</span>
@@ -524,6 +621,9 @@ function BrowsePage({ navigate, auth }) {
 }
 
 function ClaimPage({ navigate, auth }) {
+  const walletAddr = getUserWalletAddress(auth.user);
+  const identity = walletAddr ? shortAddress(walletAddr) : (auth.user?.email?.address || auth.user?.twitter?.username || 'Privy session');
+
   return (
     <main className="page">
       <Header navigate={navigate} auth={auth} />
@@ -545,7 +645,7 @@ function ClaimPage({ navigate, auth }) {
           </div>
           <div className="record-row">
             <span>Login</span>
-            <strong>Privy session</strong>
+            <strong>{identity}</strong>
           </div>
           <div className="record-row">
             <span>Proof</span>
@@ -794,6 +894,7 @@ function ClaimProjectForm({ auth, navigate, onSuccess }) {
 }
 
 function ProfilePage({ domain, navigate, auth }) {
+  const { wallets } = useWallets();
   const [projectData, setProjectData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -801,19 +902,29 @@ function ProfilePage({ domain, navigate, auth }) {
   const isOwner = auth.account.projects.some((project) => project.domain.toLowerCase() === domain.toLowerCase());
 
   // Form states for adding claims
-  const [claimType, setClaimType] = useState('whitepaper');
-  const [claimLabel, setClaimLabel] = useState('Whitepaper');
+  const [claimType, setClaimType] = useState(CLAIM_OPTIONS[0].value);
+  const [claimLabel, setClaimLabel] = useState(CLAIM_OPTIONS[0].defaultLabel);
   const [claimValue, setClaimValue] = useState('');
-  const [claimDetails, setClaimDetails] = useState('');
+  const [claimDetails, setClaimDetails] = useState(CLAIM_OPTIONS[0].detail);
   const [submitting, setSubmitting] = useState(false);
   const [claimError, setClaimError] = useState('');
   const [walletSubmitting, setWalletSubmitting] = useState(false);
   const [walletError, setWalletError] = useState('');
   const userWalletAddress = getUserWalletAddress(auth.user);
+  const ethereumWallets = wallets.filter((wallet) => wallet.type === 'ethereum');
+  const connectedWalletAddress = ethereumWallets[0]?.address || '';
+  const [devWalletInput, setDevWalletInput] = useState('');
+  const selectedWallet = ethereumWallets.find((wallet) => normalizeAddress(wallet.address) === normalizeAddress(devWalletInput));
+  const selectedClaimOption = CLAIM_OPTIONS.find((option) => option.value === claimType) || CLAIM_OPTIONS[0];
 
   useEffect(() => {
     loadProject();
   }, [domain]);
+
+  useEffect(() => {
+    const defaultAddress = userWalletAddress || connectedWalletAddress;
+    if (defaultAddress) setDevWalletInput((current) => current || defaultAddress);
+  }, [userWalletAddress, connectedWalletAddress]);
 
   async function loadProject() {
     setLoading(true);
@@ -857,18 +968,54 @@ function ProfilePage({ domain, navigate, auth }) {
     }
   };
 
+  const updateClaimType = (nextType) => {
+    const nextOption = CLAIM_OPTIONS.find((option) => option.value === nextType) || CLAIM_OPTIONS[0];
+    setClaimType(nextOption.value);
+    setClaimLabel(nextOption.defaultLabel);
+    setClaimDetails((current) => {
+      const isGeneratedDetail = CLAIM_OPTIONS.some((option) => option.detail === current);
+      return !current || isGeneratedDetail ? nextOption.detail : current;
+    });
+  };
+
   const verifyDevWallet = async () => {
     setWalletSubmitting(true);
     setWalletError('');
     try {
+      const walletAddress = devWalletInput.trim();
+      if (!walletAddress) throw new Error('Enter or connect the developer wallet address');
+      if (!selectedWallet) throw new Error('Connect the developer wallet before signing the challenge');
+
       const accessToken = await getAccessToken();
+      const challengeResponse = await fetch(`/api/projects/${projectData.id}/wallet-challenge`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ wallet_address: walletAddress })
+      });
+      const challenge = await challengeResponse.json();
+      if (!challengeResponse.ok) throw new Error(challenge.error || 'Failed to create wallet challenge');
+
+      const signature = selectedWallet.sign
+        ? await selectedWallet.sign(challenge.message)
+        : await (await selectedWallet.getEthereumProvider()).request({
+            method: 'personal_sign',
+            params: [challenge.message, walletAddress]
+          });
+
       const response = await fetch(`/api/projects/${projectData.id}/verify-wallet`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'content-type': 'application/json'
         },
-        body: JSON.stringify({ wallet_address: userWalletAddress })
+        body: JSON.stringify({
+          wallet_address: walletAddress,
+          nonce: challenge.nonce,
+          signature
+        })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to verify developer wallet');
@@ -908,6 +1055,10 @@ function ProfilePage({ domain, navigate, auth }) {
               <strong>{shortAddress(projectData.tokenAddress)}</strong>
             </div>
             <div className="inline-stat">
+              <span>Token Metadata</span>
+              <strong>{projectData.contract.symbol || projectData.token}</strong>
+            </div>
+            <div className="inline-stat">
               <span>Domain</span>
               <strong>{projectData.domain}</strong>
             </div>
@@ -929,6 +1080,68 @@ function ProfilePage({ domain, navigate, auth }) {
           <div className="record-row">
             <span>Chain</span>
             <strong>Base Mainnet</strong>
+          </div>
+          <div className="record-row">
+            <span>Agent JSON</span>
+            <strong>{projectData.agentProfileUrl ? 'Available' : 'Missing'}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section className="profile-intel">
+        <div className="section-title">
+          <p className="section-label">Verification Profile</p>
+          <h2>Proofs, metadata, and agent access.</h2>
+        </div>
+        <div className="profile-intel-grid">
+          <div className="proof-list">
+            {projectData.proofs.map((proof) => (
+              <div key={proof.type} className={`proof-row proof-${proof.status}`}>
+                <div>
+                  <strong>{proof.label}</strong>
+                  <p>{proof.checked_at ? `Last checked ${formatDateTime(proof.checked_at)}` : 'No check recorded'}</p>
+                </div>
+                <span>{proof.status}</span>
+              </div>
+            ))}
+          </div>
+          <div className="contract-panel">
+            <p className="section-label">Base Contract</p>
+            <div className="contract-fields">
+              <div className="inline-stat">
+                <span>Status</span>
+                <strong>{projectData.contract.status || 'missing'}</strong>
+              </div>
+              <div className="inline-stat">
+                <span>Name</span>
+                <strong>{projectData.contract.name || 'Unavailable'}</strong>
+              </div>
+              <div className="inline-stat">
+                <span>Symbol</span>
+                <strong>{projectData.contract.symbol || 'Unavailable'}</strong>
+              </div>
+              <div className="inline-stat">
+                <span>Decimals</span>
+                <strong>{projectData.contract.decimals ?? 'Unavailable'}</strong>
+              </div>
+            </div>
+          </div>
+          <div className="agent-panel">
+            <p className="section-label">Agent Access</p>
+            <a className="agent-link" href={projectData.agentProfileUrl || `/api/projects/${projectData.id}/agent.json`} target="_blank" rel="noreferrer">
+              <FileJson size={18} />
+              <span>Open machine-readable profile</span>
+            </a>
+            <div className="canonical-links">
+              {projectData.canonicalLinks.length > 0 ? projectData.canonicalLinks.map((link) => (
+                <a key={`${link.type}-${link.url}`} href={link.url} target="_blank" rel="noreferrer">
+                  <ExternalLink size={15} />
+                  <span>{link.label}</span>
+                </a>
+              )) : (
+                <p>No canonical links published yet.</p>
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -974,10 +1187,22 @@ function ProfilePage({ domain, navigate, auth }) {
                 <strong>{projectData.devWalletAddress ? shortAddress(projectData.devWalletAddress) : 'Missing'}</strong>
               </div>
               <div className="inline-stat">
-                <span>Login Wallet</span>
-                <strong>{userWalletAddress ? shortAddress(userWalletAddress) : 'No wallet linked'}</strong>
+                <span>Connected Wallet</span>
+                <strong>{connectedWalletAddress ? shortAddress(connectedWalletAddress) : 'No wallet connected'}</strong>
               </div>
-              <button className="button primary" type="button" onClick={verifyDevWallet} disabled={walletSubmitting || !userWalletAddress || projectData.walletStatus === 'verified'}>
+              <label className="wallet-address-field">
+                <span>Developer wallet address</span>
+                <input
+                  value={devWalletInput}
+                  onChange={(event) => setDevWalletInput(event.target.value)}
+                  placeholder="0x..."
+                  disabled={walletSubmitting || projectData.walletStatus === 'verified'}
+                />
+              </label>
+              <button className="button secondary" type="button" onClick={auth.connectWallet} disabled={walletSubmitting || projectData.walletStatus === 'verified'}>
+                Connect Dev Wallet
+              </button>
+              <button className="button primary" type="button" onClick={verifyDevWallet} disabled={walletSubmitting || !devWalletInput || projectData.walletStatus === 'verified'}>
                 {walletSubmitting ? 'Verifying...' : projectData.walletStatus === 'verified' ? 'Wallet Verified' : 'Verify Dev Wallet'}
               </button>
             </div>
@@ -990,11 +1215,10 @@ function ProfilePage({ domain, navigate, auth }) {
             </div>
             <label>
               <span>Type</span>
-              <select value={claimType} onChange={(e) => setClaimType(e.target.value)}>
-                <option value="whitepaper">Whitepaper</option>
-                <option value="social">Social</option>
-                <option value="wallet">Wallet</option>
-                <option value="commitment">Commitment</option>
+              <select value={claimType} onChange={(e) => updateClaimType(e.target.value)}>
+                {CLAIM_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
             <label>
@@ -1003,11 +1227,20 @@ function ProfilePage({ domain, navigate, auth }) {
             </label>
             <label>
               <span>Value</span>
-              <input value={claimValue} onChange={(e) => setClaimValue(e.target.value)} required />
+              <input
+                value={claimValue}
+                onChange={(e) => setClaimValue(e.target.value)}
+                placeholder={selectedClaimOption.placeholder}
+                required
+              />
             </label>
             <label className="wide-field">
               <span>Detailed Explanation</span>
-              <input value={claimDetails} onChange={(e) => setClaimDetails(e.target.value)} />
+              <input
+                value={claimDetails}
+                onChange={(e) => setClaimDetails(e.target.value)}
+                placeholder={selectedClaimOption.detail}
+              />
             </label>
             <button className="button primary" type="submit" disabled={submitting}>
               {submitting ? 'Updating...' : 'Publish Claim'}
@@ -1067,7 +1300,7 @@ function DocsPage({ navigate, auth }) {
               </div>
               <div className="level-card">
                 <strong>Developer wallet</strong>
-                <p>After DNS claim, the owner can verify a browser or login wallet linked to the same session. This raises the project to Domain + Wallet Verified.</p>
+                <p>After DNS claim, the owner can verify any connected Ethereum wallet by signing a CLEARO challenge. This raises the project to Domain + Wallet Verified.</p>
               </div>
               <div className="level-card">
                 <strong>Registry</strong>
@@ -1084,7 +1317,7 @@ function DocsPage({ navigate, auth }) {
               <li>Copy the generated CLEARO DNS TXT record and publish it on the domain.</li>
               <li>Run <strong>Verify DNS TXT</strong>. The <strong>Claim Project</strong> button stays disabled until the DNS check passes.</li>
               <li>Claim the project. CLEARO creates or updates the project and links it to the logged-in user.</li>
-              <li>Open the project profile and verify the developer wallet connected through the login session.</li>
+              <li>Open the project profile, connect the developer wallet, and sign the CLEARO challenge.</li>
               <li>Publish owner-managed claims such as official links, documentation, contract notes, or operational status.</li>
             </ol>
             <p>
@@ -1197,7 +1430,7 @@ function DocsPage({ navigate, auth }) {
                 </tr>
                 <tr>
                   <td><code>wallet_verified</code></td>
-                  <td>The developer wallet is connected through the project owner login session.</td>
+                  <td>The developer wallet signed a CLEARO challenge from the project owner session.</td>
                 </tr>
                 <tr>
                   <td><code>monitored</code></td>
@@ -1310,8 +1543,8 @@ function DocsPage({ navigate, auth }) {
               </div>
             </div>
             <div className="docs-api-item">
-              <h4>POST /api/projects/:id/verify-wallet</h4>
-              <p>Requires project owner access. The wallet must be connected through the logged-in session. DNS-only projects are listed, but wallet verification raises the trust score and status.</p>
+              <h4>POST /api/projects/:id/wallet-challenge</h4>
+              <p>Requires project owner access. Returns a one-time CLEARO message that the developer wallet must sign.</p>
               <div className="api-block">
                 <pre><code>{`{
   "wallet_address": "0x742d35cc6634c0532925a3b844bc454e4438f44e"
@@ -1319,12 +1552,25 @@ function DocsPage({ navigate, auth }) {
               </div>
             </div>
             <div className="docs-api-item">
-              <h4>POST /api/projects/:id/claims</h4>
+              <h4>POST /api/projects/:id/verify-wallet</h4>
+              <p>Requires project owner access. Submit the wallet address, challenge nonce, and signature. DNS-only projects are listed, but wallet verification raises the trust score and status.</p>
               <div className="api-block">
                 <pre><code>{`{
-  "label": "Official whitepaper",
-  "value": "https://test.com/whitepaper.pdf",
-  "details": "Primary project documentation published by the owner."
+  "wallet_address": "0x742d35cc6634c0532925a3b844bc454e4438f44e",
+  "nonce": "challenge-nonce",
+  "signature": "0x..."
+}`}</code></pre>
+              </div>
+            </div>
+            <div className="docs-api-item">
+              <h4>POST /api/projects/:id/claims</h4>
+              <p>Requires project owner access. HTTPS claim values are also exposed as canonical links in the machine-readable profile for agents.</p>
+              <div className="api-block">
+                <pre><code>{`{
+  "type": "gitlawb_agent",
+  "label": "GitLawb agent profile",
+  "value": "https://gitlawb.com/agent-id",
+  "details": "GitLawb DID profile or signed repository for agents."
 }`}</code></pre>
               </div>
             </div>
@@ -1357,6 +1603,98 @@ function DocsPage({ navigate, auth }) {
         </div>
       </section>
 
+    </main>
+  );
+}
+
+function PrivacyPage({ navigate, auth }) {
+  return (
+    <main className="page">
+      <Header navigate={navigate} auth={auth} />
+      <section className="docs-hero">
+        <div className="folio">PRV</div>
+        <div className="hero-main">
+          <p className="section-label">Legal</p>
+          <h1>Privacy Policy</h1>
+          <p className="lede">
+            How CLEARO handles data in a decentralized identity environment.
+          </p>
+        </div>
+      </section>
+      <section className="docs-section">
+        <div className="section-title">
+          <p className="section-label">Data</p>
+          <h2>Collection and usage.</h2>
+        </div>
+        <div className="docs-content-wide">
+          <article className="docs-article">
+            <h3>Overview</h3>
+            <p>
+              CLEARO is a public registry. By design, project claims, DNS verification status, and linked developer wallets are intended to be public data.
+            </p>
+            <div className="docs-grid-simple">
+              <div className="level-card">
+                <strong>Public Data</strong>
+                <p>Domains, token addresses, and verified claims are stored in our public database and exposed via API.</p>
+              </div>
+              <div className="level-card">
+                <strong>Authentication</strong>
+                <p>We use Privy for authentication. Privy manages your login credentials and DID (Decentralized Identifier).</p>
+              </div>
+              <div className="level-card">
+                <strong>Analytics</strong>
+                <p>We may collect basic usage metrics to improve the platform, such as search frequency and claim success rates.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function TermsPage({ navigate, auth }) {
+  return (
+    <main className="page">
+      <Header navigate={navigate} auth={auth} />
+      <section className="docs-hero">
+        <div className="folio">TOS</div>
+        <div className="hero-main">
+          <p className="section-label">Legal</p>
+          <h1>Terms of Service</h1>
+          <p className="lede">
+            Rules for participating in the CLEARO registry.
+          </p>
+        </div>
+      </section>
+      <section className="docs-section">
+        <div className="section-title">
+          <p className="section-label">Rules</p>
+          <h2>Usage guidelines.</h2>
+        </div>
+        <div className="docs-content-wide">
+          <article className="docs-article">
+            <h3>Acceptable Use</h3>
+            <p>
+              Users must not submit false DNS records or attempt to spoof project ownership.
+            </p>
+            <div className="docs-grid-simple">
+              <div className="level-card">
+                <strong>Verification</strong>
+                <p>CLEARO verifies domain ownership via DNS. This does not constitute an endorsement of the project or token.</p>
+              </div>
+              <div className="level-card">
+                <strong>Liability</strong>
+                <p>CLEARO is provided "as is". We are not responsible for any financial decisions made based on registry data.</p>
+              </div>
+              <div className="level-card">
+                <strong>Termination</strong>
+                <p>We reserve the right to remove projects from the registry if they are found to be fraudulent or malicious.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
     </main>
   );
 }

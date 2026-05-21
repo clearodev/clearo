@@ -14,7 +14,7 @@ Most token identity is scattered across websites, social profiles, contracts, wa
 | --- | --- | --- |
 | Login | Who is using the website | Privy session with wallet, email, or X login |
 | Domain ownership | The owner controls the public project domain | DNS TXT proof on the claimed domain |
-| Developer wallet | A wallet is connected through the owner session | Wallet verification after DNS claim |
+| Developer wallet | A wallet signs a CLEARO challenge from the owner session | Wallet verification after DNS claim |
 | Registry data | Public claims and verification history | Readable project profile and API endpoints |
 
 Privy is used for login and session management only. CLEARO does not auto-create embedded wallets for users.
@@ -27,7 +27,7 @@ Privy is used for login and session management only. CLEARO does not auto-create
 4. The owner publishes that TXT record on the project domain.
 5. CLEARO verifies DNS before enabling the final claim action.
 6. The project profile becomes visible in `/browse`.
-7. The owner can verify a developer wallet connected through the login session.
+7. The owner can verify a developer wallet by signing a CLEARO challenge from that wallet.
 8. The owner can publish claims such as official documentation, links, wallet notes, or operating statements.
 
 DNS-only projects are listed publicly. Developer wallet verification raises the project to a stronger `Domain + Wallet Verified` status.
@@ -61,7 +61,7 @@ Project profiles include a trust score and status vocabulary that agents can ins
 | `linked` | Claim was submitted by an authenticated project owner |
 | `dns_verified` | CLEARO verified DNS proof for the project domain |
 | `wallet_signed` | A wallet signature verified a wallet-controlled statement |
-| `wallet_verified` | Developer wallet is connected through the project owner login session |
+| `wallet_verified` | Developer wallet signed a CLEARO challenge from the project owner session |
 | `monitored` | CLEARO is watching the value or link for changes |
 | `missing` | Expected source, link, or proof was not found |
 
@@ -77,6 +77,8 @@ Public reads do not require login.
 | `GET` | `/api/projects/verified` | DNS-verified projects used by `/browse` |
 | `GET` | `/api/projects?domain=test.com` | One project profile by domain |
 | `GET` | `/api/projects?token=0x...` | One project profile by Base token contract |
+| `GET` | `/api/projects/:id` | One project profile by registry ID |
+| `GET` | `/api/projects/:id/agent.json` | Machine-readable profile for agents |
 | `POST` | `/api/verify/dns` | Check whether a CLEARO DNS TXT record is visible |
 
 Authenticated writes require a Privy access token:
@@ -89,7 +91,8 @@ Authorization: Bearer <privy-access-token>
 | --- | --- | --- |
 | `GET` | `/api/auth/me` | Logged-in user and owned projects |
 | `POST` | `/api/auth/claim-project` | Claim a DNS-verified project |
-| `POST` | `/api/projects/:id/verify-wallet` | Verify the developer wallet |
+| `POST` | `/api/projects/:id/wallet-challenge` | Create a developer wallet signature challenge |
+| `POST` | `/api/projects/:id/verify-wallet` | Verify the signed developer wallet challenge |
 | `POST` | `/api/projects/:id/claims` | Add an owner-managed claim |
 
 ### DNS Check
@@ -98,7 +101,13 @@ Authorization: Bearer <privy-access-token>
 {
   "matched": true,
   "record": "clearo=v1 chain=base domain=test.com token=0x5f4c2a8b9d1337c1ea992cf0037b219ca8f2d811",
-  "status": "verified"
+  "status": "verified",
+  "contract": {
+    "status": "verified",
+    "name": "Test Project",
+    "symbol": "TEST",
+    "decimals": 18
+  }
 }
 ```
 
@@ -117,7 +126,9 @@ Authorization: Bearer <privy-access-token>
 
 ```json
 {
-  "wallet_address": "0x742d35cc6634c0532925a3b844bc454e4438f44e"
+  "wallet_address": "0x742d35cc6634c0532925a3b844bc454e4438f44e",
+  "nonce": "challenge-nonce",
+  "signature": "0x..."
 }
 ```
 
@@ -125,9 +136,10 @@ Authorization: Bearer <privy-access-token>
 
 ```json
 {
-  "label": "Official whitepaper",
-  "value": "https://test.com/whitepaper.pdf",
-  "details": "Primary project documentation published by the owner."
+  "type": "gitlawb_agent",
+  "label": "GitLawb agent profile",
+  "value": "https://gitlawb.com/agent-id",
+  "details": "GitLawb DID profile or signed repository for agents."
 }
 ```
 
@@ -138,10 +150,10 @@ Agents should treat CLEARO as a verification source, not as proof that every ext
 Recommended agent workflow:
 
 1. Read `/api/registry/summary` or `/api/projects/verified`.
-2. Read `/api/projects?domain=...` or `/api/projects?token=...` before trusting a project link, whitepaper, or contract claim.
-3. Inspect `claims`, `events`, and `crossChecks` together.
+2. Read `/api/projects?domain=...`, `/api/projects?token=...`, or `/api/projects/:id/agent.json` before trusting a project link, whitepaper, or contract claim.
+3. Inspect `proofs`, `contract`, `claims`, `events`, and `crossChecks` together.
 4. Use authenticated writes only when a human owner has supplied a valid Privy access token.
-5. Handle `401`, `403`, and `404` explicitly.
+5. Handle `400`, `401`, `403`, `404`, `413`, `422`, and `429` explicitly.
 
 ## Tech Stack
 
@@ -173,7 +185,12 @@ Required environment variables:
 VITE_PRIVY_APP_ID=your-privy-app-id
 PRIVY_APP_ID=your-privy-app-id
 PRIVY_APP_SECRET=your-privy-app-secret
+HOST=127.0.0.1
+PORT=3101
+BASE_RPC_URL=https://mainnet.base.org
 ```
+
+The API rate-limits write-like endpoints, caps JSON request bodies, checks token contracts on Base, and periodically rechecks DNS proofs. Optional runtime knobs are documented in `.env.example`.
 
 Run the frontend:
 

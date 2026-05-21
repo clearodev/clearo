@@ -1,13 +1,20 @@
 import { createServer } from 'node:http';
 import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import dns from 'node:dns/promises';
 import { PrivyClient } from '@privy-io/node';
+import { getAddress, verifyMessage } from 'viem';
 
 const PORT = Number(process.env.PORT || 3001);
+const HOST = process.env.HOST || '127.0.0.1';
 const DATA_DIR = resolve(process.cwd(), 'data');
 const DB_PATH = resolve(DATA_DIR, 'clearo.sqlite');
+const BASE_RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+const JSON_BODY_LIMIT_BYTES = Number(process.env.JSON_BODY_LIMIT_BYTES || 32768);
+const DNS_RECHECK_INTERVAL_MS = Number(process.env.DNS_RECHECK_INTERVAL_MS || 6 * 60 * 60 * 1000);
+const rateLimitBuckets = new Map();
 
 function loadLocalEnv() {
   const envPath = resolve(process.cwd(), '.env');
@@ -45,12 +52,10 @@ function runSql(statement, json = false) {
   return output.trim() ? JSON.parse(output) : [];
 }
 
-function tryRunSql(statement) {
-  try {
-    runSql(statement);
-  } catch {
-    // Schema migrations are idempotent; duplicate-column errors can be ignored.
-  }
+function addColumnIfMissing(table, column, definition) {
+  const existing = runSql(`PRAGMA table_info(${table});`, true);
+  if (existing.some((row) => row.name === column)) return;
+  runSql(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
 }
 
 function expectedDnsRecord(domain, token) {
@@ -80,6 +85,40 @@ function findMatchingClearoRecord(records, domain, token) {
       && parsed.domain?.toLowerCase() === normalizedDomain
       && parsed.token?.toLowerCase() === normalizedToken;
   });
+}
+
+function validationError(message) {
+  const error = new Error(message);
+  error.status = 400;
+  return error;
+}
+
+function normalizeDomain(value) {
+  const domain = String(value || '').trim().toLowerCase().replace(/\.$/, '');
+  if (!domain) throw validationError('domain is required');
+  if (domain.length > 253) throw validationError('domain is too long');
+  if (domain.includes('://') || domain.includes('/') || domain.includes('@')) {
+    throw validationError('domain must be a bare hostname');
+  }
+  if (domain === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(domain)) {
+    throw validationError('domain must be a public hostname');
+  }
+  const labels = domain.split('.');
+  if (labels.length < 2) throw validationError('domain must include a public suffix');
+  for (const label of labels) {
+    if (!/^[a-z0-9-]{1,63}$/.test(label) || label.startsWith('-') || label.endsWith('-')) {
+      throw validationError('domain contains an invalid label');
+    }
+  }
+  return domain;
+}
+
+function normalizeTokenAddress(value) {
+  try {
+    return getAddress(String(value || '').trim()).toLowerCase();
+  } catch {
+    throw validationError('token_address must be a valid Ethereum address');
+  }
 }
 
 function getBearerToken(req) {
@@ -173,46 +212,109 @@ function initDb() {
       verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(user_id, project_id)
     );
-  `);
-
-  tryRunSql('ALTER TABLE projects ADD COLUMN dev_wallet_address TEXT;');
-  tryRunSql('ALTER TABLE projects ADD COLUMN dev_wallet_verified_at TEXT;');
-
-  const [{ count }] = runSql('SELECT COUNT(*) AS count FROM projects;', true);
-  if (count > 0) return;
-
-  runSql(`
-    INSERT INTO projects (
-      domain, token_address, chain, name, ticker, dns_status, wallet_status,
-      dev_wallet_address, dev_wallet_verified_at, contract_backlink_status,
-      platform_status, verification_level, trust_score
-    ) VALUES (
-      'test.com',
-      '0x5f4c2a8b9d1337c1ea992cf0037b219ca8f2d811',
-      'base',
-      'Test Project',
-      'TEST',
-      'verified',
-      'verified',
-      '0x742d35cc6634c0532925a3b844bc454e4438f44e',
-      CURRENT_TIMESTAMP,
-      'missing',
-      'missing',
-      'Domain + Wallet Verified',
-      95
+    CREATE TABLE IF NOT EXISTS wallet_challenges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      wallet_address TEXT NOT NULL,
+      nonce TEXT NOT NULL UNIQUE,
+      message TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
-    INSERT INTO claims (project_id, type, label, value, status, details) VALUES
-      (1, 'official_token', 'Official token', '0x5f4c2a8b9d1337c1ea992cf0037b219ca8f2d811', 'dns_verified', 'DNS TXT record resolves to this Base token contract.'),
-      (1, 'dev_wallet', 'Developer wallet', '0x742d35cc6634c0532925a3b844bc454e4438f44e', 'wallet_verified', 'Developer wallet connected through the project owner login session.'),
-      (1, 'commitment', 'Team sale lock', 'No team wallet sales before Aug 1, 2026', 'monitored', 'CLEARO monitors disclosed team wallets for early sales.'),
-      (1, 'fee_usage', 'Fee usage', 'Creator fees fund agent compute and indexer costs.', 'monitored', 'Public operating claim, monitored through disclosed fee wallet.'),
-      (1, 'whitepaper', 'Whitepaper', 'https://test.com/whitepaper.pdf', 'linked', 'Linked from the verified domain.');
-    INSERT INTO events (project_id, message) VALUES
-      (1, 'DNS record first observed'),
-      (1, 'Developer wallet verified'),
-      (1, 'Fee wallet monitoring enabled'),
-      (1, 'Whitepaper link added');
   `);
+
+  addColumnIfMissing('projects', 'dev_wallet_address', 'TEXT');
+  addColumnIfMissing('projects', 'dev_wallet_verified_at', 'TEXT');
+  addColumnIfMissing('projects', 'dns_checked_at', 'TEXT');
+  addColumnIfMissing('projects', 'dns_verified_at', 'TEXT');
+  addColumnIfMissing('projects', 'contract_status', 'TEXT NOT NULL DEFAULT \'missing\'');
+  addColumnIfMissing('projects', 'contract_name', 'TEXT');
+  addColumnIfMissing('projects', 'contract_symbol', 'TEXT');
+  addColumnIfMissing('projects', 'contract_decimals', 'INTEGER');
+  addColumnIfMissing('projects', 'contract_checked_at', 'TEXT');
+
+}
+
+function getCanonicalLinks(claims) {
+  return claims
+    .filter((claim) => /^https?:\/\//i.test(claim.value))
+    .map((claim) => ({
+      type: claim.type,
+      label: claim.label,
+      url: claim.value,
+      status: claim.status
+    }));
+}
+
+function buildProofs(project) {
+  return [
+    {
+      type: 'domain',
+      label: 'Domain DNS',
+      status: project.dns_status,
+      checked_at: project.dns_checked_at,
+      verified_at: project.dns_verified_at
+    },
+    {
+      type: 'contract',
+      label: 'Base contract',
+      status: project.contract_status || 'missing',
+      checked_at: project.contract_checked_at
+    },
+    {
+      type: 'wallet',
+      label: 'Developer wallet',
+      status: project.wallet_status,
+      verified_at: project.dev_wallet_verified_at
+    },
+    {
+      type: 'contract_backlink',
+      label: 'Contract backlink',
+      status: project.contract_backlink_status
+    },
+    {
+      type: 'platform',
+      label: 'Launch platform metadata',
+      status: project.platform_status
+    }
+  ];
+}
+
+function buildAgentProfile(project, claims) {
+  return {
+    schema: 'clearo.agent_profile.v1',
+    id: project.id,
+    domain: project.domain,
+    chain: project.chain,
+    token_address: project.token_address,
+    verification_level: project.verification_level,
+    trust_score: project.trust_score,
+    proofs: buildProofs(project),
+    contract: {
+      status: project.contract_status || 'missing',
+      name: project.contract_name,
+      symbol: project.contract_symbol,
+      decimals: project.contract_decimals,
+      checked_at: project.contract_checked_at
+    },
+    developer_wallet: {
+      status: project.wallet_status,
+      address: project.dev_wallet_address,
+      verified_at: project.dev_wallet_verified_at
+    },
+    claims: claims.map((claim) => ({
+      type: claim.type,
+      label: claim.label,
+      value: claim.value,
+      status: claim.status,
+      details: claim.details,
+      created_at: claim.created_at
+    })),
+    canonical_links: getCanonicalLinks(claims),
+    updated_at: project.updated_at
+  };
 }
 
 function getProject(filters = {}) {
@@ -220,7 +322,9 @@ function getProject(filters = {}) {
     ? `LOWER(token_address) = LOWER(${sql(filters.token)})`
     : filters.domain
       ? `LOWER(domain) = LOWER(${sql(filters.domain)})`
-      : 'id = 1';
+      : filters.id
+        ? `id = ${Number(filters.id)}`
+        : 'id = 1';
   const rows = runSql(`SELECT * FROM projects WHERE ${where} LIMIT 1;`, true);
   if (!rows[0]) return null;
   const project = rows[0];
@@ -230,9 +334,22 @@ function getProject(filters = {}) {
     ...project,
     claims,
     events,
+    proofs: buildProofs(project),
+    canonical_links: getCanonicalLinks(claims),
+    agent_profile_url: `/api/projects/${project.id}/agent.json`,
+    profile_url: `/project/${project.domain}`,
+    contract: {
+      status: project.contract_status || 'missing',
+      name: project.contract_name,
+      symbol: project.contract_symbol,
+      decimals: project.contract_decimals,
+      checked_at: project.contract_checked_at
+    },
+    agent_profile: buildAgentProfile(project, claims),
     crossChecks: [
       { label: 'DNS claim', status: project.dns_status },
       { label: 'Wallet signature', status: project.wallet_status },
+      { label: 'Base contract', status: project.contract_status || 'missing' },
       { label: 'Contract backlink', status: project.contract_backlink_status },
       { label: 'Launch platform metadata', status: project.platform_status }
     ]
@@ -278,6 +395,10 @@ function getVerifiedProjects() {
       chain,
       wallet_status,
       dev_wallet_address,
+      contract_status,
+      contract_symbol,
+      contract_decimals,
+      dns_checked_at,
       trust_score AS score,
       verification_level AS status,
       updated_at
@@ -305,9 +426,39 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+function clientIp(req) {
+  return String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
+    .split(',')[0]
+    .trim();
+}
+
+function rateLimit(req, key, limit, windowMs) {
+  const bucketKey = `${key}:${clientIp(req)}`;
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(bucketKey);
+  if (!bucket || bucket.resetAt <= now) {
+    rateLimitBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
+    return null;
+  }
+  bucket.count += 1;
+  if (bucket.count <= limit) return null;
+  const error = new Error('rate limit exceeded');
+  error.status = 429;
+  return error;
+}
+
 async function readJson(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > JSON_BODY_LIMIT_BYTES) {
+      const error = new Error('request body is too large');
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
   if (!chunks.length) return {};
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
@@ -321,6 +472,10 @@ function recomputeVerification(projectId) {
   if (project.wallet_status === 'verified') {
     level = 'Domain + Wallet Verified';
     score += 30;
+  }
+  if (project.contract_status === 'verified') {
+    level = project.wallet_status === 'verified' ? 'Domain + Wallet + Contract Verified' : 'Domain + Contract Verified';
+    score += 5;
   }
   if (project.contract_backlink_status === 'verified') {
     level = project.wallet_status === 'verified' ? 'Fully Verified' : 'Contract Linked';
@@ -336,28 +491,119 @@ function recomputeVerification(projectId) {
   `);
 }
 
-async function handleVerifyDns(req, res) {
-  const body = await readJson(req);
-  const domain = String(body.domain || '').trim().toLowerCase();
-  const token = String(body.token_address || '').trim().toLowerCase();
-  if (!domain || !token) return send(res, 400, { error: 'domain and token_address are required' });
+function decodeAbiStringResult(hex) {
+  if (!hex || hex === '0x') return '';
+  const raw = hex.slice(2);
+  if (raw.length === 64) {
+    return Buffer.from(raw.replace(/00+$/, ''), 'hex').toString('utf8').trim();
+  }
+  const offset = Number.parseInt(raw.slice(0, 64), 16) * 2;
+  const length = Number.parseInt(raw.slice(offset, offset + 64), 16) * 2;
+  if (!Number.isFinite(length) || length <= 0) return '';
+  return Buffer.from(raw.slice(offset + 64, offset + 64 + length), 'hex').toString('utf8').trim();
+}
 
+async function rpc(method, params) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const response = await fetch(BASE_RPC_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      signal: controller.signal
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error?.message || 'Base RPC request failed');
+    return data.result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readErc20Metadata(tokenAddress) {
+  const code = await rpc('eth_getCode', [tokenAddress, 'latest']);
+  if (!code || code === '0x') {
+    return { status: 'missing', name: null, symbol: null, decimals: null };
+  }
+
+  async function call(selector) {
+    try {
+      return await rpc('eth_call', [{ to: tokenAddress, data: selector }, 'latest']);
+    } catch {
+      return '';
+    }
+  }
+
+  const [nameResult, symbolResult, decimalsResult] = await Promise.all([
+    call('0x06fdde03'),
+    call('0x95d89b41'),
+    call('0x313ce567')
+  ]);
+
+  const decimals = decimalsResult && decimalsResult !== '0x'
+    ? Number.parseInt(decimalsResult, 16)
+    : null;
+
+  return {
+    status: 'verified',
+    name: decodeAbiStringResult(nameResult) || null,
+    symbol: decodeAbiStringResult(symbolResult) || null,
+    decimals: Number.isFinite(decimals) ? decimals : null
+  };
+}
+
+function updateContractMetadata(projectId, metadata) {
+  runSql(`
+    UPDATE projects
+    SET contract_status = ${sql(metadata.status)},
+        contract_name = ${sql(metadata.name)},
+        contract_symbol = ${sql(metadata.symbol)},
+        contract_decimals = ${metadata.decimals === null || metadata.decimals === undefined ? 'NULL' : Number(metadata.decimals)},
+        contract_checked_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${Number(projectId)};
+  `);
+  recomputeVerification(projectId);
+}
+
+async function checkDnsProof(domain, token) {
   let txtRecords = [];
   try {
     txtRecords = (await dns.resolveTxt(domain)).map((parts) => parts.join(''));
   } catch {
     txtRecords = [];
   }
+  return findMatchingClearoRecord(txtRecords, domain, token) || null;
+}
 
-  const matchedRecord = findMatchingClearoRecord(txtRecords, domain, token);
+async function handleVerifyDns(req, res) {
+  const limited = rateLimit(req, 'verify-dns', 20, 60 * 1000);
+  if (limited) throw limited;
+  const body = await readJson(req);
+  const domain = normalizeDomain(body.domain);
+  const token = normalizeTokenAddress(body.token_address);
+
+  let contract = null;
+  try {
+    contract = await readErc20Metadata(token);
+  } catch (error) {
+    return send(res, 503, { error: 'Base contract check failed', note: error.message });
+  }
+
+  const matchedRecord = await checkDnsProof(domain, token);
 
   const existing = getProject({ domain });
   if (existing && existing.token_address.toLowerCase() === token) {
     runSql(`
       UPDATE projects
-      SET dns_status = ${sql(matchedRecord ? 'verified' : 'pending')}, updated_at = CURRENT_TIMESTAMP
+      SET dns_status = ${sql(matchedRecord ? 'verified' : 'pending')},
+          dns_checked_at = CURRENT_TIMESTAMP,
+          dns_verified_at = ${matchedRecord ? 'COALESCE(dns_verified_at, CURRENT_TIMESTAMP)' : 'dns_verified_at'},
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ${existing.id};
     `);
+    updateContractMetadata(existing.id, contract);
     recomputeVerification(existing.id);
   }
 
@@ -366,41 +612,32 @@ async function handleVerifyDns(req, res) {
     record: matchedRecord || null,
     expected_record: expectedDnsRecord(domain, token),
     status: matchedRecord ? 'verified' : 'pending',
+    contract,
     note: matchedRecord
       ? 'Domain DNS claims this token. Wallet or contract-side checks are still required for ownership-level verification.'
       : 'No matching CLEARO TXT record was found.'
   });
 }
 
-async function handleCreateProject(req, res) {
-  const body = await readJson(req);
-  const domain = String(body.domain || '').trim().toLowerCase();
-  const token = String(body.token_address || '').trim();
-  const name = String(body.name || domain || 'Untitled project').trim();
-  const ticker = String(body.ticker || 'TOKEN').trim().toUpperCase();
-  if (!domain || !token) return send(res, 400, { error: 'domain and token_address are required' });
-
-  runSql(`
-    INSERT INTO projects (domain, token_address, chain, name, ticker, dns_status, verification_level, trust_score)
-    VALUES (${sql(domain)}, ${sql(token)}, 'base', ${sql(name)}, ${sql(ticker)}, 'pending', 'Domain Claimed', 15)
-    ON CONFLICT(domain) DO UPDATE SET
-      token_address = excluded.token_address,
-      name = excluded.name,
-      ticker = excluded.ticker,
-      updated_at = CURRENT_TIMESTAMP;
-  `);
-  const saved = getProject({ domain });
-  return send(res, 200, saved);
-}
-
 async function handleClaimProject(req, res) {
+  const limited = rateLimit(req, 'claim-project', 8, 60 * 1000);
+  if (limited) throw limited;
   const user = await requirePrivyUser(req);
   const body = await readJson(req);
-  const domain = String(body.domain || '').trim().toLowerCase();
-  const token = String(body.token_address || '').trim().toLowerCase();
+  const domain = normalizeDomain(body.domain);
+  const token = normalizeTokenAddress(body.token_address);
   const name = String(body.name || domain || 'Untitled project').trim();
   const ticker = String(body.ticker || 'TOKEN').trim().toUpperCase();
-  if (!domain || !token) return send(res, 400, { error: 'domain and token_address are required' });
+
+  let contract;
+  try {
+    contract = await readErc20Metadata(token);
+  } catch (error) {
+    return send(res, 503, { error: 'Base contract check failed', note: error.message });
+  }
+  if (contract.status !== 'verified') {
+    return send(res, 422, { error: 'token_address is not a Base contract' });
+  }
 
   const existing = getProject({ domain });
   if (existing && existing.token_address.toLowerCase() !== token) {
@@ -410,14 +647,7 @@ async function handleClaimProject(req, res) {
     });
   }
 
-  let txtRecords = [];
-  try {
-    txtRecords = (await dns.resolveTxt(domain)).map((parts) => parts.join(''));
-  } catch {
-    txtRecords = [];
-  }
-
-  const matchedRecord = findMatchingClearoRecord(txtRecords, domain, token);
+  const matchedRecord = await checkDnsProof(domain, token);
   const expectedRecord = expectedDnsRecord(domain, token);
   if (!matchedRecord) {
     if (!existing) {
@@ -442,9 +672,12 @@ async function handleClaimProject(req, res) {
       name = excluded.name,
       ticker = excluded.ticker,
       dns_status = 'verified',
+      dns_checked_at = CURRENT_TIMESTAMP,
+      dns_verified_at = COALESCE(dns_verified_at, CURRENT_TIMESTAMP),
       updated_at = CURRENT_TIMESTAMP;
   `);
   const project = getProject({ domain });
+  updateContractMetadata(project.id, contract);
   recomputeVerification(project.id);
   runSql(`
     INSERT INTO project_owners (user_id, project_id, role, verified_by)
@@ -457,7 +690,8 @@ async function handleClaimProject(req, res) {
   return send(res, 200, {
     project: getProject({ domain }),
     record: matchedRecord,
-    expected_record: expectedRecord
+    expected_record: expectedRecord,
+    contract
   });
 }
 
@@ -490,38 +724,100 @@ function normalizeAddress(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function extractWalletAddresses(privyUser) {
-  const accounts = privyUser?.linked_accounts || privyUser?.linkedAccounts || [];
-  return accounts
-    .filter((account) => account?.type === 'wallet' || account?.type === 'smart_wallet')
-    .map((account) => account.address || account.wallet_address)
-    .filter(Boolean);
+function isEthereumAddress(value) {
+  return /^0x[a-fA-F0-9]{40}$/.test(String(value || '').trim());
 }
 
-async function getLinkedWalletAddresses(privyDid) {
-  const privyUser = await privy.users()._get(privyDid);
-  return extractWalletAddresses(privyUser);
+function buildWalletChallengeMessage({ project, walletAddress, nonce, expiresAt }) {
+  return [
+    'CLEARO developer wallet verification',
+    '',
+    `Domain: ${project.domain}`,
+    `Project ID: ${project.id}`,
+    `Token: ${project.token_address}`,
+    `Chain: ${project.chain}`,
+    `Wallet: ${walletAddress}`,
+    `Nonce: ${nonce}`,
+    `Expires At: ${expiresAt}`,
+    '',
+    'Sign this message to prove control of this developer wallet. This does not authorize a transaction.'
+  ].join('\n');
 }
 
-async function handleVerifyDevWallet(req, res, projectId) {
+async function handleCreateWalletChallenge(req, res, projectId) {
+  const limited = rateLimit(req, 'wallet-challenge', 10, 60 * 1000);
+  if (limited) throw limited;
   const user = await requirePrivyUser(req);
   const project = getProjectById(projectId);
   if (!project) return send(res, 404, { error: 'project not found' });
   if (!isProjectOwner(user.id, projectId)) return send(res, 403, { error: 'project owner access is required' });
 
   const body = await readJson(req);
-  const requestedWallet = normalizeAddress(body.wallet_address);
-  const wallets = await getLinkedWalletAddresses(user.privy_did);
-  const wallet = wallets.find((address) => normalizeAddress(address) === requestedWallet) || wallets[0];
-
-  if (!wallet) {
-    return send(res, 400, { error: 'No developer wallet is connected through this login session' });
+  const walletAddress = String(body.wallet_address || '').trim();
+  if (!isEthereumAddress(walletAddress)) {
+    return send(res, 400, { error: 'A valid Ethereum wallet address is required' });
   }
-  if (requestedWallet && normalizeAddress(wallet) !== requestedWallet) {
-    return send(res, 403, { error: 'Submitted wallet is not connected through this login session' });
+
+  const nonce = randomBytes(24).toString('hex');
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const message = buildWalletChallengeMessage({ project, walletAddress, nonce, expiresAt });
+
+  runSql(`
+    DELETE FROM wallet_challenges
+    WHERE expires_at <= ${sql(new Date().toISOString())} OR consumed_at IS NOT NULL;
+    INSERT INTO wallet_challenges (project_id, user_id, wallet_address, nonce, message, expires_at)
+    VALUES (${Number(projectId)}, ${Number(user.id)}, ${sql(normalizeAddress(walletAddress))}, ${sql(nonce)}, ${sql(message)}, ${sql(expiresAt)});
+  `);
+
+  return send(res, 201, { wallet_address: walletAddress, nonce, message, expires_at: expiresAt });
+}
+
+async function handleVerifyDevWallet(req, res, projectId) {
+  const limited = rateLimit(req, 'verify-wallet', 10, 60 * 1000);
+  if (limited) throw limited;
+  const user = await requirePrivyUser(req);
+  const project = getProjectById(projectId);
+  if (!project) return send(res, 404, { error: 'project not found' });
+  if (!isProjectOwner(user.id, projectId)) return send(res, 403, { error: 'project owner access is required' });
+
+  const body = await readJson(req);
+  const wallet = String(body.wallet_address || '').trim();
+  const requestedWallet = normalizeAddress(wallet);
+  const signature = String(body.signature || '').trim();
+  const nonce = String(body.nonce || '').trim();
+  if (!isEthereumAddress(wallet)) return send(res, 400, { error: 'A valid Ethereum wallet address is required' });
+  if (!signature || !nonce) return send(res, 400, { error: 'Wallet signature and challenge nonce are required' });
+
+  const [challenge] = runSql(`
+    SELECT * FROM wallet_challenges
+    WHERE project_id = ${Number(projectId)}
+      AND user_id = ${Number(user.id)}
+      AND wallet_address = ${sql(requestedWallet)}
+      AND nonce = ${sql(nonce)}
+      AND consumed_at IS NULL
+      AND expires_at > ${sql(new Date().toISOString())}
+    LIMIT 1;
+  `, true);
+  if (!challenge) return send(res, 400, { error: 'Wallet challenge is missing, expired, or already used' });
+
+  let validSignature = false;
+  try {
+    validSignature = await verifyMessage({
+      address: wallet,
+      message: challenge.message,
+      signature
+    });
+  } catch {
+    validSignature = false;
+  }
+  if (!validSignature) {
+    return send(res, 403, { error: 'Wallet signature does not match the submitted developer wallet' });
   }
 
   runSql(`
+    UPDATE wallet_challenges
+    SET consumed_at = CURRENT_TIMESTAMP
+    WHERE id = ${Number(challenge.id)};
     UPDATE projects
     SET wallet_status = 'verified',
         dev_wallet_address = ${sql(wallet)},
@@ -531,9 +827,9 @@ async function handleVerifyDevWallet(req, res, projectId) {
     DELETE FROM claims
     WHERE project_id = ${Number(projectId)} AND type = 'dev_wallet';
     INSERT INTO claims (project_id, type, label, value, status, details)
-    VALUES (${Number(projectId)}, 'dev_wallet', 'Developer wallet', ${sql(wallet)}, 'wallet_verified', 'Wallet is connected through the project owner login session.');
+    VALUES (${Number(projectId)}, 'dev_wallet', 'Developer wallet', ${sql(wallet)}, 'wallet_verified', 'Wallet signed a CLEARO developer wallet challenge from the project owner session.');
     INSERT INTO events (project_id, message)
-    VALUES (${Number(projectId)}, 'Developer wallet verified');
+    VALUES (${Number(projectId)}, 'Developer wallet signature verified');
   `);
   recomputeVerification(projectId);
 
@@ -541,6 +837,8 @@ async function handleVerifyDevWallet(req, res, projectId) {
 }
 
 async function handleAddClaim(req, res, projectId) {
+  const limited = rateLimit(req, 'add-claim', 20, 60 * 1000);
+  if (limited) throw limited;
   const user = await requirePrivyUser(req);
   const project = getProjectById(projectId);
   if (!project) return send(res, 404, { error: 'project not found' });
@@ -566,9 +864,39 @@ function getProjectById(id) {
   return runSql(`SELECT * FROM projects WHERE id = ${Number(id)} LIMIT 1;`, true)[0] || null;
 }
 
-initDb();
+async function recheckProjectProofs() {
+  const projects = runSql('SELECT id, domain, token_address, dns_status FROM projects ORDER BY id;', true);
+  for (const project of projects) {
+    try {
+      const matchedRecord = await checkDnsProof(project.domain, project.token_address);
+      const nextStatus = matchedRecord ? 'verified' : 'pending';
+      if (nextStatus !== project.dns_status) {
+        runSql(`
+          INSERT INTO events (project_id, message)
+          VALUES (${Number(project.id)}, ${sql(nextStatus === 'verified' ? 'DNS record observed again' : 'DNS record no longer resolves')});
+        `);
+      }
+      runSql(`
+        UPDATE projects
+        SET dns_status = ${sql(nextStatus)},
+            dns_checked_at = CURRENT_TIMESTAMP,
+            dns_verified_at = ${matchedRecord ? 'COALESCE(dns_verified_at, CURRENT_TIMESTAMP)' : 'dns_verified_at'},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${Number(project.id)};
+      `);
+      const contract = await readErc20Metadata(project.token_address);
+      updateContractMetadata(project.id, contract);
+      recomputeVerification(project.id);
+    } catch (error) {
+      console.error(`Proof recheck failed for project ${project.id}:`, error.message);
+    }
+  }
+}
 
-createServer(async (req, res) => {
+initDb();
+setInterval(recheckProjectProofs, DNS_RECHECK_INTERVAL_MS).unref();
+
+const server = createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, {});
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
 
@@ -581,16 +909,24 @@ createServer(async (req, res) => {
       return project ? send(res, 200, project) : send(res, 404, { error: 'project not found' });
     }
 
+    const projectByIdMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+    if (req.method === 'GET' && projectByIdMatch) {
+      const project = getProject({ id: projectByIdMatch[1] });
+      return project ? send(res, 200, project) : send(res, 404, { error: 'project not found' });
+    }
+
+    const agentProfileMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/agent\.json$/);
+    if (req.method === 'GET' && agentProfileMatch) {
+      const project = getProject({ id: agentProfileMatch[1] });
+      return project ? send(res, 200, project.agent_profile) : send(res, 404, { error: 'project not found' });
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/registry/summary') {
       return send(res, 200, getRegistrySummary());
     }
 
     if (req.method === 'GET' && url.pathname === '/api/projects/verified') {
       return send(res, 200, { projects: getVerifiedProjects() });
-    }
-
-    if (req.method === 'POST' && url.pathname === '/api/projects') {
-      return await handleCreateProject(req, res);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/verify/dns') {
@@ -603,6 +939,11 @@ createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/auth/claim-project') {
       return await handleClaimProject(req, res);
+    }
+
+    const walletChallengeMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/wallet-challenge$/);
+    if (req.method === 'POST' && walletChallengeMatch) {
+      return await handleCreateWalletChallenge(req, res, walletChallengeMatch[1]);
     }
 
     const walletVerifyMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/verify-wallet$/);
@@ -621,6 +962,8 @@ createServer(async (req, res) => {
     if (status >= 500) console.error(error);
     return send(res, status, { error: error.message || 'server error' });
   }
-}).listen(PORT, () => {
-  console.log(`CLEARO API listening on ${PORT}`);
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`CLEARO API listening on ${HOST}:${PORT}`);
 });
