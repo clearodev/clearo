@@ -1,120 +1,98 @@
 # CLEARO
 
-CLEARO is a public registry for Base token identity. A project profile connects a token contract, a public domain, owner-managed claims, DNS ownership proof, and optional developer wallet verification.
+**A public verification registry for Base token identity.**
 
-Production site: https://clearo.dev
+CLEARO links a token contract to an owned domain, public project claims, DNS proof, and optional developer wallet verification. The goal is simple: give users and agents a readable source of truth before they trust a token website, whitepaper, claim, or project link.
 
-## What CLEARO Verifies
+[clearo.dev](https://clearo.dev)
 
-Account login and project ownership are separate.
+## Overview
 
-- Login: Privy manages the website session with wallet, email, or X login. CLEARO does not auto-create embedded wallets for login.
-- Ownership: DNS TXT verification proves that the logged-in user controls the domain they want to manage.
-- Developer wallet: after DNS claim, the owner can verify a browser or login wallet connected through the same session. This raises the project to `Domain + Wallet Verified`.
-- Registry: public read endpoints expose verified project profiles, claim statuses, verification events, and cross-check results without login.
+Most token identity is scattered across websites, social profiles, contracts, wallets, and launch metadata. CLEARO turns the strongest project-controlled signals into a small public registry:
 
-## Owner Flow
+| Layer | What it proves | How it works |
+| --- | --- | --- |
+| Login | Who is using the website | Privy session with wallet, email, or X login |
+| Domain ownership | The owner controls the public project domain | DNS TXT proof on the claimed domain |
+| Developer wallet | A wallet is connected through the owner session | Wallet verification after DNS claim |
+| Registry data | Public claims and verification history | Readable project profile and API endpoints |
 
-1. Log in with Privy using wallet, email, or X.
-2. Open `/claim`.
-3. Enter the project domain, Base token contract, project name, and ticker.
-4. Publish the generated CLEARO DNS TXT record on the project domain.
-5. Run `Verify DNS TXT`.
-6. Claim the project after DNS verification passes.
-7. Open the project profile and verify the developer wallet connected through the login session.
-8. Publish owner-managed claims such as official links, documentation, contract notes, or operational status.
+Privy is used for login and session management only. CLEARO does not auto-create embedded wallets for users.
 
-Owner-submitted claims are stored as `linked`. Stronger labels such as `dns_verified`, `wallet_verified`, or `monitored` are reserved for checks the platform can verify.
+## Product Flow
 
-## DNS TXT Record
+1. A project owner logs in with Privy.
+2. They open `/claim` and enter a domain, Base token contract, project name, and ticker.
+3. CLEARO generates a DNS TXT record.
+4. The owner publishes that TXT record on the project domain.
+5. CLEARO verifies DNS before enabling the final claim action.
+6. The project profile becomes visible in `/browse`.
+7. The owner can verify a developer wallet connected through the login session.
+8. The owner can publish claims such as official documentation, links, wallet notes, or operating statements.
 
-Publish one TXT record on the project domain. CLEARO reads exact key/value pairs separated by spaces.
+DNS-only projects are listed publicly. Developer wallet verification raises the project to a stronger `Domain + Wallet Verified` status.
+
+## DNS Verification
+
+CLEARO verifies ownership through a TXT record on the project domain.
 
 ```txt
 clearo=v1 chain=base domain=test.com token=0x5f4c2a8b9d1337c1ea992cf0037b219ca8f2d811
 ```
 
-DNS provider fields:
+Use these DNS provider fields:
 
-- `Type`: `TXT`
-- `Name` or `Host`: `@`
-- `Content` or `Value`: the generated CLEARO record
-- If the provider does not accept `@`, use the bare domain such as `test.com`
-- Do not use `_clearo`; CLEARO currently checks TXT records on the project domain itself
+| Field | Value |
+| --- | --- |
+| Type | `TXT` |
+| Name / Host | `@` |
+| Content / Value | Generated CLEARO record |
 
-Record keys:
+If the DNS provider rejects `@`, use the bare domain, for example `test.com`.
 
-- `clearo`: proof format version, currently `v1`
-- `chain`: token network, currently `base`
-- `domain`: domain being claimed
-- `token`: Base token contract address, compared case-insensitively
+Do not use `_clearo`. The current verifier checks TXT records directly on the project domain.
 
-## Project Data
+## Verification Model
 
-A project profile stores:
+Project profiles include a trust score and status vocabulary that agents can inspect.
 
-- Domain
-- Base token contract
-- Display name
-- Ticker
-- Trust score
-- Current verification status
-- Claim list
-- Verification events
-- Cross-checks
-- Optional developer wallet address
+| Status | Meaning |
+| --- | --- |
+| `linked` | Claim was submitted by an authenticated project owner |
+| `dns_verified` | CLEARO verified DNS proof for the project domain |
+| `wallet_signed` | A wallet signature verified a wallet-controlled statement |
+| `wallet_verified` | Developer wallet is connected through the project owner login session |
+| `monitored` | CLEARO is watching the value or link for changes |
+| `missing` | Expected source, link, or proof was not found |
 
-Status vocabulary:
-
-- `linked`: claim was submitted by an authenticated project owner
-- `dns_verified`: CLEARO verified DNS proof for the project domain
-- `wallet_signed`: a wallet signature verified a wallet-controlled statement
-- `wallet_verified`: developer wallet is connected through the project owner login session
-- `monitored`: the platform is watching the value or link for changes
-- `missing`: the expected source, link, or proof was not found
+A project profile stores the domain, Base token contract, display name, ticker, trust score, verification status, claims, events, cross-checks, and optional developer wallet address.
 
 ## API
 
 Public reads do not require login.
 
-### `GET /api/registry/summary`
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/registry/summary` | Registry metrics and recent projects |
+| `GET` | `/api/projects/verified` | DNS-verified projects used by `/browse` |
+| `GET` | `/api/projects?domain=test.com` | One project profile by domain |
+| `GET` | `/api/projects?token=0x...` | One project profile by Base token contract |
+| `POST` | `/api/verify/dns` | Check whether a CLEARO DNS TXT record is visible |
 
-Returns registry metrics and recent projects.
+Authenticated writes require a Privy access token:
 
-```json
-{
-  "metrics": {
-    "indexed_records": 1,
-    "dns_verified": 1,
-    "claims_watched": 5,
-    "broken_claims": 0
-  },
-  "recent_projects": [
-    {
-      "domain": "test.com",
-      "ticker": "TEST",
-      "score": 95,
-      "status": "Domain + Wallet Verified"
-    }
-  ]
-}
+```http
+Authorization: Bearer <privy-access-token>
 ```
 
-### `GET /api/projects/verified`
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/auth/me` | Logged-in user and owned projects |
+| `POST` | `/api/auth/claim-project` | Claim a DNS-verified project |
+| `POST` | `/api/projects/:id/verify-wallet` | Verify the developer wallet |
+| `POST` | `/api/projects/:id/claims` | Add an owner-managed claim |
 
-Returns the database-backed list used by `/browse`. Only DNS-verified projects are included.
-
-### `GET /api/projects?domain=test.com`
-
-Returns one project profile by domain.
-
-### `GET /api/projects?token=0x...`
-
-Returns one project profile by Base token contract.
-
-### `POST /api/verify/dns`
-
-Checks whether the expected TXT record is visible for the submitted domain and token.
+### DNS Check
 
 ```json
 {
@@ -124,19 +102,7 @@ Checks whether the expected TXT record is visible for the submitted domain and t
 }
 ```
 
-Authenticated writes require a Privy access token:
-
-```http
-Authorization: Bearer <privy-access-token>
-```
-
-### `GET /api/auth/me`
-
-Returns the logged-in user and owned projects.
-
-### `POST /api/auth/claim-project`
-
-Claims a project after `POST /api/verify/dns` returns `matched: true`.
+### Claim Project
 
 ```json
 {
@@ -147,9 +113,7 @@ Claims a project after `POST /api/verify/dns` returns `matched: true`.
 }
 ```
 
-### `POST /api/projects/:id/verify-wallet`
-
-Requires project owner access. The wallet must be connected through the logged-in session. DNS-only projects are listed, but wallet verification raises the trust score and status.
+### Verify Developer Wallet
 
 ```json
 {
@@ -157,9 +121,7 @@ Requires project owner access. The wallet must be connected through the logged-i
 }
 ```
 
-### `POST /api/projects/:id/claims`
-
-Adds an owner-managed claim.
+### Add Claim
 
 ```json
 {
@@ -169,15 +131,27 @@ Adds an owner-managed claim.
 }
 ```
 
-## Agent Guidance
+## Agent Use
 
-Agents should treat CLEARO as a verification source, not as proof that every external statement is true. Trust the status field and cross-checks, not a label alone.
+Agents should treat CLEARO as a verification source, not as proof that every external statement is true. Prefer status fields, cross-checks, and event history over a claim label alone.
 
-1. Read `/api/registry/summary` for metrics or `/api/projects/verified` to browse verified projects.
-2. Read `/api/projects?domain=...` or `/api/projects?token=...` before using a project link, whitepaper, or contract claim.
-3. Inspect `claims`, `events`, and `crossChecks` together before making a decision.
-4. Use authenticated write endpoints only when the human owner has issued a valid Privy access token for that session.
+Recommended agent workflow:
+
+1. Read `/api/registry/summary` or `/api/projects/verified`.
+2. Read `/api/projects?domain=...` or `/api/projects?token=...` before trusting a project link, whitepaper, or contract claim.
+3. Inspect `claims`, `events`, and `crossChecks` together.
+4. Use authenticated writes only when a human owner has supplied a valid Privy access token.
 5. Handle `401`, `403`, and `404` explicitly.
+
+## Tech Stack
+
+| Area | Stack |
+| --- | --- |
+| Frontend | React, Vite, lucide-react |
+| Authentication | Privy React + Node SDK |
+| API | Node.js HTTP server |
+| Database | SQLite |
+| Deployment | Nginx, systemd |
 
 ## Local Development
 
@@ -187,7 +161,7 @@ Install dependencies:
 npm install
 ```
 
-Create `.env` from `.env.example`:
+Create `.env`:
 
 ```bash
 cp .env.example .env
@@ -219,19 +193,38 @@ Build production assets:
 npm run build
 ```
 
+## Repository Layout
+
+```txt
+.
+├── deploy/
+│   ├── clearo-api.service
+│   └── nginx-clearo.dev.conf
+├── public/
+│   └── logo.png
+├── src/
+│   ├── main.jsx
+│   └── styles.css
+├── index.html
+├── server.js
+├── vite.config.js
+└── package.json
+```
+
 ## Deployment Notes
 
-This server currently runs:
+The production server runs the Node API from `server.js`, serves the Vite build from `dist/`, and stores runtime registry data in `data/clearo.sqlite`.
 
-- Node API from `server.js`
-- SQLite database in `data/clearo.sqlite`
-- Vite production build in `dist/`
-- Nginx config in `deploy/nginx-clearo.dev.conf`
-- systemd service in `deploy/clearo-api.service`
+Runtime files are intentionally excluded from git:
 
-Runtime files are intentionally ignored by git:
+```txt
+.env
+data/
+dist/
+node_modules/
+```
 
-- `.env`
-- `data/`
-- `dist/`
-- `node_modules/`
+The included deployment references are:
+
+- `deploy/nginx-clearo.dev.conf`
+- `deploy/clearo-api.service`
