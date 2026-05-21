@@ -197,9 +197,6 @@ npm run build
 
 ```txt
 .
-├── deploy/
-│   ├── clearo-api.service
-│   └── nginx-clearo.dev.conf
 ├── public/
 │   └── logo.png
 ├── src/
@@ -211,20 +208,16 @@ npm run build
 └── package.json
 ```
 
-## Deployment Notes
+## Runtime Notes
 
-The production server runs the Node API from `server.js`, serves the Vite build from `dist/`, and stores runtime registry data in `data/clearo.sqlite`.
+The API runs from `server.js`, the frontend builds into `dist/`, and runtime registry data is stored in SQLite under `data/`.
 
 Runtime files are intentionally excluded from git:
 
 ```txt
 .env
 data/
+deploy/
 dist/
 node_modules/
 ```
-
-The included deployment references are:
-
-- `deploy/nginx-clearo.dev.conf`
-- `deploy/clearo-api.service`
