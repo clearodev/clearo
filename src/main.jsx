@@ -337,9 +337,9 @@ function HomePage({ navigate, auth }) {
       <section className="hero">
         <EtherealShadow
           className="hero-ethereal-shadow"
-          color="rgba(0, 204, 136, 0.48)"
+          color="rgba(0, 204, 136, 0.72)"
           animation={{ scale: 72, speed: 42 }}
-          noise={{ opacity: 0.22, scale: 1 }}
+          noise={{ opacity: 0.34, scale: 1 }}
           sizing="fill"
           title={null}
         />

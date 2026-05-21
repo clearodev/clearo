@@ -150,13 +150,13 @@ select {
 
 .hero-ethereal-shadow {
   bottom: 0;
-  height: min(72svh, 760px);
+  height: 100%;
   left: clamp(180px, 16vw, 260px);
-  opacity: 0.36;
+  opacity: 0.68;
   pointer-events: none;
   position: absolute !important;
   right: -10vw;
-  top: 8%;
+  top: 0;
   z-index: 0;
 }
 
@@ -1849,11 +1849,11 @@ pre {
   }
 
   .hero-ethereal-shadow {
-    height: 520px;
+    height: 100%;
     left: -18vw;
-    opacity: 0.28;
+    opacity: 0.54;
     right: -24vw;
-    top: 116px;
+    top: 0;
   }
 
   .folio-mark {
@@ -1999,11 +1999,11 @@ pre {
   }
 
   .hero-ethereal-shadow {
-    height: 440px;
+    height: 100%;
     left: -38vw;
-    opacity: 0.22;
+    opacity: 0.42;
     right: -46vw;
-    top: 108px;
+    top: 0;
   }
 
   .folio {
