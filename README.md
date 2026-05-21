@@ -164,11 +164,25 @@ Recommended agent workflow:
 
 | Area | Stack |
 | --- | --- |
-| Frontend | React, Vite, lucide-react |
+| Frontend | React, Vite, TypeScript-capable TSX components, lucide-react, framer-motion |
 | Authentication | Privy React + Node SDK |
 | API | Node.js HTTP server |
 | Database | SQLite |
 | Deployment | Nginx, systemd |
+
+## Component Structure
+
+Reusable UI components live in `components/ui/`. The Vite `@/` alias points at the repository root, so imports such as `@/components/ui/etheral-shadow` resolve correctly.
+
+Global app styles currently live in `src/styles.css`. This project does not currently include Tailwind CSS or a shadcn `components.json`; it keeps the production UI on the existing CSS system. If shadcn/Tailwind components become a regular part of the app, initialize them with:
+
+```bash
+npx shadcn@latest init
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+```
+
+Keeping `components/ui/` matters because shadcn components, generated imports, and external component snippets commonly assume that path.
 
 ## Local Development
 
