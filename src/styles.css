@@ -143,7 +143,7 @@ select {
 }
 
 .hero:has(.hero-record) {
-  grid-template-columns: minmax(160px, 1fr) 6fr 4fr;
+  grid-template-columns: minmax(188px, 0.95fr) 6fr 4fr;
 }
 
 .folio {
@@ -157,22 +157,23 @@ select {
   display: flex;
   flex-direction: column;
   font-family: "Orbitron", sans-serif;
-  font-size: clamp(54px, 7vw, 100px);
+  font-size: clamp(38px, 4vw, 56px);
   font-weight: 900;
   justify-content: space-between;
-  line-height: 0.82;
+  line-height: 0.92;
   min-height: calc(100svh - 64px);
   overflow: hidden;
-  padding: 32px 22px;
+  padding: 32px 16px;
   position: relative;
+  white-space: nowrap;
 }
 
 .folio::before {
-  background: linear-gradient(180deg, transparent, rgba(0, 204, 136, 0.38), transparent);
+  background: linear-gradient(180deg, transparent, rgba(0, 204, 136, 0.22), transparent);
   content: "";
   height: 120px;
   left: 0;
-  opacity: 0.46;
+  opacity: 0.3;
   position: absolute;
   right: 0;
   top: -140px;
@@ -181,12 +182,12 @@ select {
 
 .folio::after {
   background-image:
-    linear-gradient(135deg, transparent 0 47%, rgba(0, 204, 136, 0.16) 48% 52%, transparent 53% 100%),
-    radial-gradient(circle at 30% 18%, rgba(216, 231, 223, 0.18) 0 1px, transparent 1.5px);
+    linear-gradient(135deg, transparent 0 47%, rgba(0, 204, 136, 0.1) 48% 52%, transparent 53% 100%),
+    radial-gradient(circle at 30% 18%, rgba(216, 231, 223, 0.12) 0 1px, transparent 1.5px);
   background-size: 180px 180px, 70px 70px;
   content: "";
   inset: 0;
-  opacity: 0.48;
+  opacity: 0.3;
   pointer-events: none;
   position: absolute;
 }
@@ -200,7 +201,7 @@ select {
 
 .folio-mark {
   display: block;
-  font-size: clamp(42px, 4.8vw, 70px);
+  font-size: clamp(38px, 4vw, 56px);
   line-height: 0.92;
   max-width: 100%;
   white-space: nowrap;
