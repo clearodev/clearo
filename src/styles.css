@@ -102,6 +102,7 @@ select {
 }
 
 .nav-links {
+  align-items: center;
   display: flex;
   gap: 24px;
 }
@@ -122,6 +123,25 @@ select {
 .nav-links a:hover,
 .nav-links button:hover {
   color: var(--signal);
+}
+
+.external-links {
+  align-items: center;
+  border-left: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  padding-left: 18px;
+}
+
+.nav-links .social-link {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.social-link svg {
+  flex: 0 0 auto;
+  stroke-width: 2;
 }
 
 .hero {
@@ -1508,6 +1528,19 @@ pre {
   .nav-links a,
   .nav-links button {
     font-size: 12px;
+  }
+
+  .external-links {
+    gap: 8px;
+    padding-left: 8px;
+  }
+
+  .nav-links .social-link {
+    gap: 0;
+  }
+
+  .nav-links .social-link span {
+    display: none;
   }
 
   .hero {

@@ -10,7 +10,9 @@ import {
   UserCheck,
   ShieldAlert,
   WalletCards,
-  ClipboardCopy
+  ClipboardCopy,
+  Github,
+  Twitter
 } from 'lucide-react';
 import './styles.css';
 
@@ -149,6 +151,16 @@ function Header({ navigate, auth }) {
         <a href="/browse" onClick={(e) => { e.preventDefault(); navigate('/browse'); }}>Browse</a>
         <a href="/claim" onClick={(e) => { e.preventDefault(); navigate('/claim'); }}>Claim</a>
         <a href="/docs" onClick={(e) => { e.preventDefault(); navigate('/docs'); }}>Docs</a>
+        <div className="external-links" aria-label="CLEARO external links">
+          <a className="social-link" href="https://github.com/clearodev/clearo" target="_blank" rel="noreferrer" aria-label="CLEARO GitHub repository">
+            <Github size={15} />
+            <span>GitHub</span>
+          </a>
+          <a className="social-link" href="https://x.com/useClearo" target="_blank" rel="noreferrer" aria-label="CLEARO on X">
+            <Twitter size={15} />
+            <span>X</span>
+          </a>
+        </div>
         {auth.authenticated ? (
           <div className="user-session">
             <button className="profile-link" onClick={() => navigate('/profile')}>{userLabel}</button>
