@@ -16,6 +16,7 @@ import {
   ExternalLink,
   FileJson
 } from 'lucide-react';
+import { Component as EtherealShadow } from '@/components/ui/etheral-shadow';
 import './styles.css';
 
 const privyAppId = import.meta.env.VITE_PRIVY_APP_ID;
@@ -334,6 +335,14 @@ function HomePage({ navigate, auth }) {
       <Header navigate={navigate} auth={auth} />
       
       <section className="hero">
+        <EtherealShadow
+          className="hero-ethereal-shadow"
+          color="rgba(0, 204, 136, 0.48)"
+          animation={{ scale: 72, speed: 42 }}
+          noise={{ opacity: 0.22, scale: 1 }}
+          sizing="fill"
+          title={null}
+        />
         <div className="folio">
           <span className="folio-mark">CLR</span>
           <span className="folio-meta">base:8453</span>

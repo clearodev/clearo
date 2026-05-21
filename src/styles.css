@@ -140,10 +140,24 @@ select {
   display: grid;
   grid-template-columns: minmax(168px, 0.95fr) minmax(0, 6fr);
   min-height: calc(100svh - 64px);
+  overflow: hidden;
+  position: relative;
 }
 
 .hero:has(.hero-record) {
   grid-template-columns: minmax(188px, 0.95fr) 6fr 4fr;
+}
+
+.hero-ethereal-shadow {
+  bottom: 0;
+  height: min(72svh, 760px);
+  left: clamp(180px, 16vw, 260px);
+  opacity: 0.36;
+  pointer-events: none;
+  position: absolute !important;
+  right: -10vw;
+  top: 8%;
+  z-index: 0;
 }
 
 .folio {
@@ -166,6 +180,7 @@ select {
   padding: 32px 16px;
   position: relative;
   white-space: nowrap;
+  z-index: 1;
 }
 
 .folio::before {
@@ -226,6 +241,8 @@ select {
   align-self: center;
   max-width: 980px;
   padding: 64px 52px;
+  position: relative;
+  z-index: 1;
 }
 
 .section-label {
@@ -1831,6 +1848,14 @@ pre {
     padding: 20px 18px;
   }
 
+  .hero-ethereal-shadow {
+    height: 520px;
+    left: -18vw;
+    opacity: 0.28;
+    right: -24vw;
+    top: 116px;
+  }
+
   .folio-mark {
     font-size: clamp(40px, 8vw, 60px);
     line-height: 0.95;
@@ -1971,6 +1996,14 @@ pre {
 
   .hero {
     min-height: 0;
+  }
+
+  .hero-ethereal-shadow {
+    height: 440px;
+    left: -38vw;
+    opacity: 0.22;
+    right: -46vw;
+    top: 108px;
   }
 
   .folio {

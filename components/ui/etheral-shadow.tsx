@@ -30,6 +30,8 @@ interface ShadowOverlayProps {
   noise?: NoiseConfig;
   style?: CSSProperties;
   className?: string;
+  title?: string | null;
+  children?: React.ReactNode;
 }
 
 function mapRange(
@@ -59,7 +61,9 @@ export function Component({
   animation,
   noise,
   style,
-  className
+  className,
+  title = 'Etheral Shadows',
+  children
 }: ShadowOverlayProps) {
   const id = useInstanceId();
   const animationEnabled = animation && animation.scale > 0;
@@ -168,20 +172,24 @@ export function Component({
         />
       </div>
 
-      <div
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center',
-          zIndex: 10
-        }}
-      >
-        <h1 className="md:text-7xl text-6xl lg:text-8xl font-bold text-center text-foreground relative z-20">
-          Etheral Shadows
-        </h1>
-      </div>
+      {(title || children) && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            textAlign: 'center',
+            zIndex: 10
+          }}
+        >
+          {children || (
+            <h1 className="md:text-7xl text-6xl lg:text-8xl font-bold text-center text-foreground relative z-20">
+              {title}
+            </h1>
+          )}
+        </div>
+      )}
 
       {noise && noise.opacity > 0 && (
         <div
