@@ -126,18 +126,25 @@ function AppShell() {
 
   const auth = { ready, authenticated, user, login, logout, account, accountLoading, refreshAccount };
 
+  let currentPage;
   // Simple routing
-  if (path === '/docs') return <DocsPage navigate={navigate} auth={auth} />;
-  if (path === '/profile') return <AccountPage navigate={navigate} auth={auth} />;
-  if (path === '/claim') return <ClaimPage navigate={navigate} auth={auth} />;
-  if (path === '/browse') return <BrowsePage navigate={navigate} auth={auth} />;
-  
+  if (path === '/docs') currentPage = <DocsPage navigate={navigate} auth={auth} />;
+  else if (path === '/profile') currentPage = <AccountPage navigate={navigate} auth={auth} />;
+  else if (path === '/claim') currentPage = <ClaimPage navigate={navigate} auth={auth} />;
+  else if (path === '/browse') currentPage = <BrowsePage navigate={navigate} auth={auth} />;
+  else {
   const projectMatch = path.match(/^\/project\/(.+)$/);
-  if (projectMatch) {
-    return <ProfilePage domain={projectMatch[1]} navigate={navigate} auth={auth} />;
+    currentPage = projectMatch
+      ? <ProfilePage domain={projectMatch[1]} navigate={navigate} auth={auth} />
+      : <HomePage navigate={navigate} auth={auth} />;
   }
 
-  return <HomePage navigate={navigate} auth={auth} />;
+  return (
+    <>
+      {currentPage}
+      <SiteFooter />
+    </>
+  );
 }
 
 function Header({ navigate, auth }) {
@@ -151,16 +158,6 @@ function Header({ navigate, auth }) {
         <a href="/browse" onClick={(e) => { e.preventDefault(); navigate('/browse'); }}>Browse</a>
         <a href="/claim" onClick={(e) => { e.preventDefault(); navigate('/claim'); }}>Claim</a>
         <a href="/docs" onClick={(e) => { e.preventDefault(); navigate('/docs'); }}>Docs</a>
-        <div className="external-links" aria-label="CLEARO external links">
-          <a className="social-link" href="https://github.com/clearodev/clearo" target="_blank" rel="noreferrer" aria-label="CLEARO GitHub repository">
-            <Github size={15} />
-            <span>GitHub</span>
-          </a>
-          <a className="social-link" href="https://x.com/useClearo" target="_blank" rel="noreferrer" aria-label="CLEARO on X">
-            <Twitter size={15} />
-            <span>X</span>
-          </a>
-        </div>
         {auth.authenticated ? (
           <div className="user-session">
             <button className="profile-link" onClick={() => navigate('/profile')}>{userLabel}</button>
@@ -171,6 +168,24 @@ function Header({ navigate, auth }) {
         )}
       </nav>
     </header>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <a className="brand footer-brand" href="/">CLEARO</a>
+      <div className="footer-links" aria-label="CLEARO external links">
+        <a className="social-link" href="https://github.com/clearodev/clearo" target="_blank" rel="noreferrer" aria-label="CLEARO GitHub repository">
+          <Github size={15} />
+          <span>GitHub</span>
+        </a>
+        <a className="social-link" href="https://x.com/useClearo" target="_blank" rel="noreferrer" aria-label="CLEARO on X">
+          <Twitter size={15} />
+          <span>X</span>
+        </a>
+      </div>
+    </footer>
   );
 }
 
