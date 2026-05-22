@@ -1,10 +1,56 @@
 # CLEARO
 
-**A public verification registry for Base token identity.**
+<p align="center">
+  <a href="https://clearo.dev">
+    <img src="public/logo.png" alt="CLEARO" width="96" height="96">
+  </a>
+</p>
 
-CLEARO links a token contract to an owned domain, public project claims, DNS proof, and optional developer wallet verification. The goal is simple: give users and agents a readable source of truth before they trust a token website, whitepaper, claim, or project link.
+<p align="center">
+  <strong>Public verification registry for Base token identity, DNS ownership, and developer wallets.</strong>
+</p>
 
-[clearo.dev](https://clearo.dev)
+<p align="center">
+  <a href="https://clearo.dev"><img alt="Website" src="https://img.shields.io/badge/website-clearo.dev-0f766e?style=for-the-badge&logo=google-chrome&logoColor=white"></a>
+  <a href="https://base.org"><img alt="Base" src="https://img.shields.io/badge/chain-Base-0052ff?style=for-the-badge&logo=coinbase&logoColor=white"></a>
+  <a href="https://github.com/clearodev/clearo"><img alt="GitHub" src="https://img.shields.io/badge/source-GitHub-181717?style=for-the-badge&logo=github&logoColor=white"></a>
+</p>
+
+<p align="center">
+  <img alt="React" src="https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=111827">
+  <img alt="Vite" src="https://img.shields.io/badge/Vite-6-646cff?style=flat-square&logo=vite&logoColor=white">
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-API-339933?style=flat-square&logo=node.js&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-registry-003b57?style=flat-square&logo=sqlite&logoColor=white">
+  <img alt="Privy" src="https://img.shields.io/badge/Auth-Privy-6f4cff?style=flat-square">
+</p>
+
+CLEARO links a token contract to an owned domain, public project claims, DNS proof, and optional developer wallet verification. It gives users, wallets, crawlers, and agents a readable source of truth before they trust a token website, whitepaper, claim, or project link.
+
+**Live:** [clearo.dev](https://clearo.dev)
+
+## What CLEARO Verifies
+
+| Signal | Purpose |
+| --- | --- |
+| Base token contract | Confirms the onchain asset a project is claiming |
+| DNS TXT proof | Confirms control of the public project domain |
+| Owner session | Connects the claim flow to an authenticated Privy user |
+| Developer wallet signature | Adds a stronger wallet-controlled verification layer |
+| Public claims | Publishes links, docs, agent profiles, and operational statements |
+
+## Quick Start
+
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Run the API in a separate shell:
+
+```bash
+npm run api
+```
 
 ## Overview
 
@@ -74,7 +120,11 @@ Public reads do not require login.
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `GET` | `/.well-known/clearo-agent.json` | Site-level manifest for agents |
+| `GET` | `/openapi.json` | OpenAPI 3.1 schema for API clients and agents |
+| `GET` | `/.well-known/openapi.json` | Alternate OpenAPI discovery path |
 | `GET` | `/llms.txt` | Plain-text agent and LLM entrypoint |
+| `GET` | `/robots.txt` | Crawler discovery file with sitemap and LLM entrypoint |
+| `GET` | `/sitemap.xml` | Sitemap for public pages and machine-readable endpoints |
 | `GET` | `/api/agent/actions` | Machine-readable read/write action schema |
 | `GET` | `/api/registry/summary` | Registry metrics and recent projects |
 | `GET` | `/api/projects/verified` | DNS-verified projects used by `/browse` |
@@ -150,7 +200,7 @@ Authorization: Bearer <privy-access-token>
 
 Agents should treat CLEARO as a verification source, not as proof that every external statement is true. Prefer status fields, cross-checks, and event history over a claim label alone.
 
-Start from `/.well-known/clearo-agent.json` or `/llms.txt` when discovering CLEARO programmatically. Those entrypoints describe Base chain ID `8453`, the DNS TXT proof format, project lookup templates, safe public reads, owner-authenticated writes, and agent-relevant claim types such as `github`, `gitlawb_agent`, `agent_profile`, `api_schema`, and `docs`.
+Start from `/.well-known/clearo-agent.json`, `/openapi.json`, or `/llms.txt` when discovering CLEARO programmatically. Those entrypoints describe Base chain ID `8453`, the DNS TXT proof format, project lookup templates, safe public reads, owner-authenticated writes, and agent-relevant claim types such as `github`, `gitlawb_agent`, `agent_profile`, `api_schema`, and `docs`.
 
 Recommended agent workflow:
 
@@ -164,7 +214,7 @@ Recommended agent workflow:
 
 | Area | Stack |
 | --- | --- |
-| Frontend | React, Vite, TypeScript-capable TSX components, lucide-react, framer-motion |
+| Frontend | React, Vite, TypeScript-capable TSX components, lucide-react |
 | Authentication | Privy React + Node SDK |
 | API | Node.js HTTP server |
 | Database | SQLite |
@@ -172,7 +222,7 @@ Recommended agent workflow:
 
 ## Component Structure
 
-Reusable UI components live in `components/ui/`. The Vite `@/` alias points at the repository root, so imports such as `@/components/ui/etheral-shadow` resolve correctly.
+Reusable UI components live in `components/ui/` when needed. The Vite `@/` alias points at the repository root.
 
 Global app styles currently live in `src/styles.css`. This project does not currently include Tailwind CSS or a shadcn `components.json`; it keeps the production UI on the existing CSS system. If shadcn/Tailwind components become a regular part of the app, initialize them with:
 
