@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://clearo.dev">
-    <img src="public/logo.png" alt="CLEARO" width="96" height="96">
+    <img src="public/eyes.jpeg" alt="CLEARO" width="900">
   </a>
 </p>
 
